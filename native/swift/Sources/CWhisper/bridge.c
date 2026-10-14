@@ -1,6 +1,7 @@
 #include "CWhisper.h"
 #include "whisper.h"
 #include <string.h>
+#include <stdlib.h>
 int elpo_whisper_validate(const char *model) {
     struct whisper_context_params params = whisper_context_default_params();
     params.use_gpu = true;
@@ -10,9 +11,30 @@ int elpo_whisper_validate(const char *model) {
     return 0;
 }
 
+static whisper_token *prompt_tokens(struct whisper_context *ctx, const char *text, int *count, int *used, int *limit) {
+    *count=0; *used=0; *limit=whisper_n_text_ctx(ctx)/2;
+    if (*limit>224) *limit=224;
+    if (!text || !text[0]) return NULL;
+    int needed=whisper_tokenize(ctx,text,NULL,0);
+    if (needed<0) needed=-needed;
+    if (!needed) return NULL;
+    whisper_token *tokens=malloc((size_t)needed*sizeof(whisper_token));
+    if (!tokens) return NULL;
+    int actual=whisper_tokenize(ctx,text,tokens,needed);
+    if (actual<0) { free(tokens); return NULL; }
+    *count=actual; *used=actual<*limit ? actual : *limit;
+    return tokens;
+}
+int elpo_whisper_prompt_info(const char *model, const char *prompt, int *count, int *used, int *limit) {
+    struct whisper_context_params cp=whisper_context_default_params(); cp.use_gpu=false;
+    struct whisper_context *ctx=whisper_init_from_file_with_params_no_state(model,cp);
+    if (!ctx) return 1;
+    whisper_token *tokens=prompt_tokens(ctx,prompt,count,used,limit);
+    free(tokens); whisper_free(ctx); return 0;
+}
 // No subprocess: killing the managed helper releases this context and Metal.
 int elpo_whisper(const char *model, const char *language, const float *audio,
-                 int count, int threads, elpo_token_callback callback, elpo_token_callback segment_callback, void *user) {
+                 int count, int threads, const char *prompt, int *prompt_count, int *prompt_used, int *prompt_limit, elpo_token_callback callback, elpo_token_callback segment_callback, void *user) {
     struct whisper_context_params cp = whisper_context_default_params();
     cp.use_gpu = true;
     cp.flash_attn = true;
@@ -29,7 +51,12 @@ int elpo_whisper(const char *model, const char *language, const float *audio,
     p.max_len = 84;
     p.split_on_word = true;
     p.print_progress = p.print_realtime = p.print_timestamps = p.print_special = false;
+    whisper_token *initial=prompt_tokens(ctx,prompt,prompt_count,prompt_used,prompt_limit);
+    p.prompt_tokens=initial; p.prompt_n_tokens=*prompt_used;
+    p.n_max_text_ctx=*prompt_limit;
+    p.carry_initial_prompt=true;
     int status = whisper_full(ctx, p, audio, count);
+    free(initial);
     if (status == 0) {
         for (int i = 0; i < whisper_full_n_segments(ctx); ++i) {
             const char *segment = whisper_full_get_segment_text(ctx, i);

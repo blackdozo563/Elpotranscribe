@@ -10,6 +10,8 @@ pub struct ReviewDifference {
     pub primary_text: String,
     pub candidate_text: Option<String>,
     pub alternative_text: String,
+    #[serde(default)]
+    pub profile_term: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Review {
@@ -145,6 +147,7 @@ pub fn compare(primary: &[Cue], secondary: &[Word]) -> Result<Review> {
             (!text.is_empty()).then_some(text)
         };
         differences.push(ReviewDifference {
+            profile_term: false,
             cue_index: index,
             primary_text: cue.text.clone(),
             candidate_text,

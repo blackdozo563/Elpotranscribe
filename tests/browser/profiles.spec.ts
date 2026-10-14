@@ -63,6 +63,8 @@ async function fixture(page: Page) {
             profile?: (typeof defaults)[number];
             id?: string;
             settings?: typeof state.settings;
+            term?: string;
+            jobId?: string;
           },
         ) => {
           if (command === "snapshot") return state;
@@ -74,6 +76,19 @@ async function fixture(page: Page) {
           if (command === "save_settings") {
             state.settings = args.settings!;
             return;
+          }
+          if (command === "prompt_info")
+            return { count: 20, used: 20, limit: 224 };
+          if (command === "add_profile_term") {
+            const profile = state.profiles.find(
+              (p: { id: string }) => p.id === args.id,
+            );
+            profile.terms = [...new Set([...profile.terms, args.term!])];
+            localStorage.setItem(
+              "fixture-profiles",
+              JSON.stringify(state.profiles),
+            );
+            return profile;
           }
           if (command === "save_profile") {
             const profile = {
@@ -181,4 +196,99 @@ test("profils fournis : suppression interdite, édition et réinitialisation ; g
   await expect(page.getByLabel("Invite Whisper", { exact: true })).toHaveValue(
     "L’Évangile et le Psaume.",
   );
+});
+
+test("sélection du profil : langue automatique et lien vers le bon profil", async ({
+  page,
+}) => {
+  await fixture(page);
+  await page
+    .getByRole("button", { name: "Nouvelle transcription", exact: true })
+    .click();
+  await page
+    .getByLabel("Profil de vocabulaire", { exact: true })
+    .selectOption("psychology-en-us");
+  await expect(page.getByLabel("Langue", { exact: true })).toHaveValue("en");
+  await page
+    .getByRole("button", { name: "Modifier le profil…", exact: true })
+    .click();
+  await expect(page.getByLabel("Nom du profil", { exact: true })).toHaveValue(
+    "Psychologie EN-US",
+  );
+});
+test("éditeur : terme proche, remplacement annulable et ajout au profil persistant", async ({
+  page,
+}) => {
+  await fixture(page);
+  await page.evaluate(() => {
+    const state = (
+      window as unknown as {
+        __TEST_PROFILE_STATE__: {
+          jobs: unknown[];
+          profiles: unknown[];
+          settings: { selectedProfileId?: string };
+        };
+      }
+    ).__TEST_PROFILE_STATE__;
+    state.settings.selectedProfileId = "liturgy-fr";
+    state.jobs = [
+      {
+        id: "profile-job",
+        source: "/fixture/prière.wav",
+        name: "prière.wav",
+        size: 123,
+        durationMs: 5000,
+        status: "completed",
+        cues: [{ startMs: 100, endMs: 4900, text: "Evengile et Freud." }],
+        error: null,
+        exportPath: null,
+        dirty: false,
+        createdAt: 0,
+        language: "fr",
+        engine: "ultra",
+        profileSnapshot: state.profiles[0],
+      },
+    ];
+  });
+  await page
+    .getByRole("button", { name: "Nouvelle transcription", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Ouvrir", exact: true }).click();
+  const cue = page.getByRole("textbox", { name: "Sous-titre 1", exact: true });
+  await expect(
+    page.locator("mark").filter({ hasText: "Evengile" }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Remplacer par Évangile", exact: true })
+    .click();
+  await expect(cue).toHaveValue("Évangile et Freud.");
+  await expect(page.getByLabel("Début 1", { exact: true })).toHaveValue(
+    "00:00:00,100",
+  );
+  await page.getByRole("button", { name: "Annuler", exact: true }).click();
+  await expect(cue).toHaveValue("Evengile et Freud.");
+  await cue.focus();
+  await cue.evaluate((field: HTMLTextAreaElement) => {
+    const at = field.value.indexOf("Freud");
+    field.setSelectionRange(at, at + 5);
+    document.dispatchEvent(new Event("selectionchange"));
+  });
+  await expect(
+    page.getByRole("button", { name: "Ajouter au profil", exact: true }),
+  ).toBeEnabled();
+  await page
+    .getByRole("button", { name: "Ajouter au profil", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "← Retour à la file", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Vocabulaire", exact: true }).click();
+  await expect(
+    page.getByLabel("Termes du profil", { exact: true }),
+  ).toContainText("Freud");
+  await page.reload();
+  await page.getByRole("button", { name: "Vocabulaire", exact: true }).click();
+  await expect(
+    page.getByLabel("Termes du profil", { exact: true }),
+  ).toContainText("Freud");
 });

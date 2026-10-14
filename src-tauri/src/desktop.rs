@@ -31,6 +31,8 @@ struct Job {
     #[serde(default)]
     timing_note: Option<String>,
     #[serde(default)]
+    profile_snapshot: Option<core::vocabulary::Profile>,
+    #[serde(default)]
     verification: Option<Verification>,
     #[serde(default)]
     verification_status: Option<String>,
@@ -143,6 +145,18 @@ impl AppState {
         }
         s.jobs.retain(|j| j.id != id);
         self.persist(&s)
+    }
+    fn sync_profile_selection(&self, id: &str, language: Option<&str>) -> Result<(), String> {
+        let mut store = self.data.store.lock().map_err(err)?;
+        if store.settings.selected_profile_id.as_deref() == Some(id) {
+            if let Some(language) = language {
+                store.settings.language = language.into();
+            } else {
+                store.settings.selected_profile_id = None;
+            }
+            self.persist(&store)?;
+        }
+        Ok(())
     }
     fn models(&self) -> PathBuf {
         self.data.root.join("models")
@@ -370,7 +384,7 @@ fn infer_transcript(
     language: &str,
     settings: &SubtitleSettings,
 ) -> Result<core::native::Transcript, String> {
-    let result = state.helper(serde_json::json!({"action":"transcribe", "models":state.models(), "source":job.source, "language":language, "engine":engine}), Some(&job.id))?;
+    let result = state.helper(serde_json::json!({"action":"transcribe", "models":state.models(), "source":job.source, "language":language, "engine":engine,"whisperPrompt":job.profile_snapshot.as_ref().map(core::vocabulary::build_prompt)}), Some(&job.id))?;
     let expected = if engine == "ultra" {
         "Parakeet Ultra"
     } else {
@@ -401,7 +415,10 @@ fn process_verification(state: AppState, job: Job, settings: Settings, secondary
         let comparison = (|| {
             let result =
                 infer_transcript(&state, &secondary, &job, &job.language, &settings.subtitles)?;
-            let review = core::review::compare(&cues, &result.comparison_units).map_err(err)?;
+            let mut review = core::review::compare(&cues, &result.comparison_units).map_err(err)?;
+            if let Some(profile) = &job.profile_snapshot {
+                core::vocabulary::rank_review(&mut review, profile);
+            }
             Ok::<_, String>(Verification {
                 secondary_engine: secondary,
                 secondary_version: result.model_version,
@@ -476,6 +493,20 @@ fn start_verification(
         job.id = uuid::Uuid::new_v4().to_string();
         job.created_at = now();
         job.archived = true;
+        if job.profile_snapshot.is_none() {
+            job.profile_snapshot = state
+                .data
+                .profiles
+                .lock()
+                .map_err(err)?
+                .profiles
+                .iter()
+                .find(|p| Some(&p.id) == settings.selected_profile_id.as_ref())
+                .cloned();
+        }
+        if let Some(profile) = &job.profile_snapshot {
+            job.language = profile.language.clone();
+        }
         job.engine = primary;
         job.model_version = None;
         job.timing_note = None;
@@ -665,6 +696,7 @@ async fn import_files(
                         .clone(),
                     model_version: None,
                     timing_note: None,
+                    profile_snapshot: None,
                     verification: None,
                     verification_status: None,
                     verification_error: None,
@@ -777,6 +809,15 @@ fn process_queue(state: AppState) {
                 j.error = None;
                 j.language = settings.language.clone();
                 j.engine = settings.engine.clone();
+                j.profile_snapshot = state
+                    .data
+                    .profiles
+                    .lock()
+                    .map_err(err)?
+                    .profiles
+                    .iter()
+                    .find(|p| Some(&p.id) == settings.selected_profile_id.as_ref())
+                    .cloned();
                 let j = j.clone();
                 state.persist(&s)?;
                 Ok(Some((j, settings)))
@@ -905,6 +946,8 @@ fn save_profile(
     next.save(&state.data.root.join("profiles.json"))
         .map_err(err)?;
     *profiles = next;
+    drop(profiles);
+    state.sync_profile_selection(&saved.id, Some(&saved.language))?;
     Ok(saved)
 }
 #[tauri::command]
@@ -915,6 +958,8 @@ fn delete_profile(state: State<'_, AppState>, id: String) -> Result<(), String> 
     next.save(&state.data.root.join("profiles.json"))
         .map_err(err)?;
     *profiles = next;
+    drop(profiles);
+    state.sync_profile_selection(&id, None)?;
     Ok(())
 }
 #[tauri::command]
@@ -928,6 +973,8 @@ fn reset_profile(
     next.save(&state.data.root.join("profiles.json"))
         .map_err(err)?;
     *profiles = next;
+    drop(profiles);
+    state.sync_profile_selection(&saved.id, Some(&saved.language))?;
     Ok(saved)
 }
 #[tauri::command]
@@ -992,7 +1039,54 @@ async fn export_profile(state: State<'_, AppState>, id: String) -> Result<Option
     .map_err(err)?
 }
 #[tauri::command]
-fn save_settings(state: State<'_, AppState>, settings: Settings) -> Result<(), String> {
+fn add_profile_term(
+    state: State<'_, AppState>,
+    id: String,
+    term: String,
+    job_id: Option<String>,
+) -> Result<core::vocabulary::Profile, String> {
+    let saved = {
+        let mut profiles = state.data.profiles.lock().map_err(err)?;
+        let mut next = profiles.clone();
+        let mut profile = next
+            .profiles
+            .iter()
+            .find(|p| p.id == id)
+            .cloned()
+            .ok_or("Profil inconnu")?;
+        profile.terms.push(term);
+        let profile = next.upsert(profile).map_err(err)?;
+        next.save(&state.data.root.join("profiles.json"))
+            .map_err(err)?;
+        *profiles = next;
+        profile
+    };
+    if let Some(job_id) = job_id {
+        state.modify(&job_id, |job| {
+            if job.status == "completed" {
+                job.profile_snapshot = Some(saved.clone());
+            }
+        })?;
+    }
+    Ok(saved)
+}
+#[tauri::command]
+async fn prompt_info(
+    state: State<'_, AppState>,
+    prompt: String,
+) -> Result<serde_json::Value, String> {
+    if prompt.len() > 1024 * 1024 {
+        return Err("Invite trop volumineuse.".into());
+    }
+    let state = state.inner().clone();
+    state.reserve()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let result=state.helper(serde_json::json!({"action":"prompt-info","models":state.models(),"engine":"whisper-turbo","whisperPrompt":prompt}),None);
+        state.release();result
+    }).await.map_err(err)?
+}
+#[tauri::command]
+fn save_settings(state: State<'_, AppState>, mut settings: Settings) -> Result<(), String> {
     let runtime = state.data.runtime.lock().map_err(err)?;
     if runtime.busy {
         return Err("Attendez la fin de l’opération pour changer les réglages".into());
@@ -1006,6 +1100,15 @@ fn save_settings(state: State<'_, AppState>, settings: Settings) -> Result<(), S
     }
     if settings.vocabulary.len() > 1000 {
         return Err("Maximum 1000 entrées".into());
+    }
+    if let Some(id) = &settings.selected_profile_id {
+        let profiles = state.data.profiles.lock().map_err(err)?;
+        let profile = profiles
+            .profiles
+            .iter()
+            .find(|p| &p.id == id)
+            .ok_or("Profil inconnu")?;
+        settings.language = profile.language.clone();
     }
     let mut s = state.data.store.lock().map_err(err)?;
     s.settings = settings;
@@ -1211,6 +1314,8 @@ pub fn run() {
             save_profile,
             delete_profile,
             reset_profile,
+            add_profile_term,
+            prompt_info,
             import_profile,
             export_profile,
             archive_completed,
@@ -1434,6 +1539,7 @@ mod integration_tests {
             engine: "Parakeet Ultra · Core ML".into(),
             model_version: None,
             timing_note: None,
+            profile_snapshot: None,
             verification: None,
             verification_status: None,
             verification_error: None,

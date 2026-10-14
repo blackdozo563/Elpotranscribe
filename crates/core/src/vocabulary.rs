@@ -70,11 +70,13 @@ impl Profile {
 }
 impl Profiles {
     pub fn save(&self, path: &Path) -> Result<()> {
-        atomic_save(
-            path,
-            &serde_json::to_vec_pretty(self).map_err(|e| Error::Invalid(e.to_string()))?,
-            true,
-        )
+        let bytes = serde_json::to_vec_pretty(self).map_err(|e| Error::Invalid(e.to_string()))?;
+        if bytes.len() > 8 * 1024 * 1024 {
+            return Err(Error::Invalid(
+                "Maximum 8 Mo pour les profils ; version enregistrée conservée.".into(),
+            ));
+        }
+        atomic_save(path, &bytes, true)
     }
     pub fn upsert(&mut self, profile: Profile) -> Result<Profile> {
         let mut profile = profile.clean()?;
@@ -200,5 +202,109 @@ mod tests {
         fs::write(&path, b"broken").unwrap();
         assert!(load(&path, &[]).is_err());
         assert_eq!(fs::read(path).unwrap(), b"broken");
+    }
+}
+
+/// Full prompt text; the model's tokenizer, not a character estimate, caps it.
+pub fn build_prompt(profile: &Profile) -> String {
+    [
+        profile.whisper_prompt.trim().to_owned(),
+        deduplicate(&profile.terms).join(", "),
+    ]
+    .into_iter()
+    .filter(|s| !s.is_empty())
+    .collect::<Vec<_>>()
+    .join("\n")
+}
+pub fn fold(text: &str) -> String {
+    use unicode_normalization::{char::is_combining_mark, UnicodeNormalization};
+    text.nfd()
+        .filter(|c| !is_combining_mark(*c))
+        .flat_map(char::to_lowercase)
+        .collect::<String>()
+}
+pub fn contains_term(text: &str, terms: &[String]) -> bool {
+    let text = fold(text);
+    terms
+        .iter()
+        .map(|t| fold(t))
+        .filter(|t| !t.is_empty())
+        .any(|term| {
+            text.match_indices(&term).any(|(at, _)| {
+                text[..at]
+                    .chars()
+                    .next_back()
+                    .is_none_or(|c| !c.is_alphanumeric())
+                    && text[at + term.len()..]
+                        .chars()
+                        .next()
+                        .is_none_or(|c| !c.is_alphanumeric())
+            })
+        })
+}
+pub fn rank_review(review: &mut crate::review::Review, profile: &Profile) {
+    for difference in &mut review.differences {
+        difference.profile_term = contains_term(&difference.primary_text, &profile.terms)
+            || contains_term(
+                difference
+                    .candidate_text
+                    .as_deref()
+                    .unwrap_or(&difference.alternative_text),
+                &profile.terms,
+            );
+    }
+    review.differences.sort_by_key(|d| !d.profile_term);
+}
+#[cfg(test)]
+mod usage_tests {
+    use super::*;
+    #[test]
+    fn prompt_deduplicates_and_terms_rank_accent_insensitively_without_changing_times() {
+        let mut profile = defaults().profiles.remove(0);
+        profile.terms = vec![" Évangile ".into(), "ÉVANGILE".into()];
+        assert!(build_prompt(&profile).ends_with("Évangile"));
+        assert!(contains_term("EVANGILE selon saint Jean", &profile.terms));
+        assert!(!contains_term("évangiles", &profile.terms));
+        let cues = vec![
+            crate::Cue {
+                start_ms: 0,
+                end_ms: 1000,
+                text: "ce foir".into(),
+            },
+            crate::Cue {
+                start_ms: 1100,
+                end_ms: 2000,
+                text: "Une pause.".into(),
+            },
+            crate::Cue {
+                start_ms: 2100,
+                end_ms: 3000,
+                text: "Evengile".into(),
+            },
+        ];
+        let words = vec![
+            crate::Word {
+                start_ms: 0,
+                end_ms: 1000,
+                text: "ce soir".into(),
+            },
+            crate::Word {
+                start_ms: 1100,
+                end_ms: 2000,
+                text: "Une pause.".into(),
+            },
+            crate::Word {
+                start_ms: 2100,
+                end_ms: 3000,
+                text: "Évangile".into(),
+            },
+        ];
+        let mut review = crate::review::compare(&cues, &words).unwrap();
+        rank_review(&mut review, &profile);
+        assert!(review.differences[0].profile_term);
+        assert_eq!(review.differences[0].cue_index, 2);
+        assert!(!review.differences[1].profile_term);
+        assert_eq!(cues[0].start_ms, 0);
+        assert_eq!(cues[2].text, "Evengile");
     }
 }

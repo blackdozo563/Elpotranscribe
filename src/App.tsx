@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke, convertFileSrc, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { findMatches, replaceMatches } from "./search";
 import Vocabulary from "./Vocabulary";
+import { nearMisses } from "./profileReview";
 import {
   AudioLines,
   LayoutDashboard,
@@ -35,6 +36,7 @@ import {
 } from "lucide-react";
 import {
   type Cue,
+  type VocabularyProfile,
   type EditState,
   type Job,
   type Settings,
@@ -324,6 +326,16 @@ export default function App() {
           )}
           {selected ? (
             <Editor
+              profile={
+                data.profiles?.find(
+                  (p) =>
+                    p.id ===
+                    (selected.profileSnapshot?.id ??
+                      data.settings.selectedProfileId),
+                ) ??
+                selected.profileSnapshot ??
+                null
+              }
               job={selected}
               action={action}
               close={() => {
@@ -471,6 +483,7 @@ export default function App() {
                             settings: {
                               ...data.settings,
                               language: e.target.value,
+                              selectedProfileId: null,
                             },
                           })
                         }
@@ -489,6 +502,34 @@ export default function App() {
                         ].map(([v, l]) => (
                           <option key={v} value={v}>
                             {l}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Profil de vocabulaire
+                      <select
+                        aria-label="Profil de vocabulaire"
+                        value={data.settings.selectedProfileId ?? ""}
+                        disabled={data.busy || working}
+                        onChange={(e) => {
+                          const profile = data.profiles?.find(
+                            (p) => p.id === e.target.value,
+                          );
+                          run("save_settings", {
+                            settings: {
+                              ...data.settings,
+                              selectedProfileId: profile?.id ?? null,
+                              language:
+                                profile?.language ?? data.settings.language,
+                            },
+                          });
+                        }}
+                      >
+                        <option value="">Aucun profil</option>
+                        {data.profiles?.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
                           </option>
                         ))}
                       </select>
@@ -874,6 +915,9 @@ export default function App() {
               )}
               {page === 6 && (
                 <Vocabulary
+                  initialProfileId={data.settings.selectedProfileId}
+                  installed={data.installedModels.includes("whisper-turbo")}
+                  busy={data.busy}
                   profiles={data.profiles ?? []}
                   action={action}
                   guard={profileGuard}
@@ -1274,11 +1318,13 @@ function Preferences({
   );
 }
 function Editor({
+  profile,
   job,
   action,
   close,
 }: {
   job: Job;
+  profile: VocabularyProfile | null;
   action: (command: string, args?: Record<string, unknown>) => Promise<unknown>;
   close: () => void;
 }) {
@@ -1294,6 +1340,12 @@ function Editor({
     [missing, setMissing] = useState(false);
   const audio = useRef<HTMLAudioElement>(null),
     textarea = useRef<Map<number, HTMLTextAreaElement>>(new Map());
+  const [selectedWord, setSelectedWord] = useState("");
+  const profileKey = JSON.stringify(profile);
+  const vocabularyMatches = useMemo(
+    () => state.present.map((c) => nearMisses(c.text, profile)),
+    [state.present, profileKey],
+  );
   const [exportSaved, setExportSaved] = useState<string | null>(
     job.dirty ? null : JSON.stringify(job.cues),
   );
@@ -1471,6 +1523,22 @@ function Editor({
             Écoutez puis choisissez les corrections. Les temps du moteur
             principal sont conservés.
           </p>
+          <div className="button-row review-priority">
+            {job.verification.review.differences.slice(0, 20).map((d) => (
+              <button
+                key={d.cueIndex}
+                onClick={() => {
+                  setSelectedCue(d.cueIndex);
+                  textarea.current
+                    .get(d.cueIndex)
+                    ?.scrollIntoView({ block: "center" });
+                }}
+              >
+                {d.profileTerm ? "Terme du profil · " : "À relire · "}Sous-titre{" "}
+                {d.cueIndex + 1}
+              </button>
+            ))}
+          </div>
           {job.verification.review.approximate && (
             <p>Comparaison approximative ; relisez les passages signalés.</p>
           )}
@@ -1506,6 +1574,30 @@ function Editor({
           </p>
         )}
       </section>
+      {profile && (
+        <section className="panel info-panel">
+          <strong>Profil de relecture : {profile.name}</strong>
+          <p>
+            Les propositions restent à valider à l’écoute ; elles ne remplacent
+            rien automatiquement.
+          </p>
+          <button
+            disabled={!selectedWord}
+            onClick={() => {
+              void action("add_profile_term", {
+                id: profile.id,
+                term: selectedWord,
+                jobId: job.id,
+              })
+                .then(() => setSelectedWord(""))
+                .catch((e) => setError(String(e)));
+            }}
+          >
+            Ajouter au profil
+          </button>
+          {selectedWord && <span> « {selectedWord} »</span>}
+        </section>
+      )}
       <div className="editor-toolbar">
         <div className="button-row">
           <button
@@ -1752,6 +1844,16 @@ function Editor({
                   : undefined
               }
               dir="auto"
+              onSelect={(e) =>
+                setSelectedWord(
+                  e.currentTarget.value
+                    .slice(
+                      e.currentTarget.selectionStart,
+                      e.currentTarget.selectionEnd,
+                    )
+                    .trim(),
+                )
+              }
               value={cue.text}
               onChange={(e) =>
                 update(
@@ -1761,6 +1863,35 @@ function Editor({
                 )
               }
             />
+            {!!vocabularyMatches[i]?.length && (
+              <div className="profile-near-misses">
+                <strong>Vocabulaire · à relire</strong>
+                {vocabularyMatches[i].map((match) => (
+                  <div key={`${match.start}-${match.term}`}>
+                    <mark>{match.original}</mark> →{" "}
+                    <button
+                      onClick={() =>
+                        update(
+                          state.present.map((c, n) =>
+                            n === i
+                              ? {
+                                  ...c,
+                                  text:
+                                    c.text.slice(0, match.start) +
+                                    match.term +
+                                    c.text.slice(match.end),
+                                }
+                              : c,
+                          ),
+                        )
+                      }
+                    >
+                      Remplacer par {match.term}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
             {job.verification?.review.differences
               .filter((difference) => difference.cueIndex === i)
               .map((difference) => {
@@ -1774,7 +1905,9 @@ function Editor({
                   <div className="review-difference" key={i}>
                     <strong>
                       {unchanged
-                        ? "À relire · divergence entre modèles"
+                        ? difference.profileTerm
+                          ? "À relire · terme du profil"
+                          : "À relire · divergence entre modèles"
                         : "Passage corrigé ou modifié"}
                     </strong>
                     <p>

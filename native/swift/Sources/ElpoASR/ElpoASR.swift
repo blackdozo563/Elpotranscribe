@@ -29,12 +29,15 @@ let ultraSDKFolderName = Repo.parakeetUltra.folderName
             let engine = request.engine ?? "ultra"
             if engine.hasPrefix("whisper-") {
                 try requirePhysicalMemory(engine: engine, bytes: ProcessInfo.processInfo.physicalMemory)
+                if request.action == "prompt-info" {
+                    try whisperPromptInfo(root: root, engine: engine, prompt: request.whisperPrompt ?? ""); return
+                }
                 if request.action == "install" {
                     try await installWhisper(root: root, engine: engine)
                     emit(["installed": true, "engine": engine]); return
                 }
                 guard request.action == "transcribe", let source = request.source else { throw Failure(message: "Commande Whisper inconnue") }
-                try transcribeWhisper(root: root, engine: engine, source: source, language: request.language); return
+                try transcribeWhisper(root: root, engine: engine, source: source, language: request.language, prompt: request.whisperPrompt); return
             }
             guard engine == "ultra" else { throw Failure(message: "Moteur inconnu") }
             let marker = root.appendingPathComponent("verified.json")

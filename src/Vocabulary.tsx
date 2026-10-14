@@ -1,4 +1,4 @@
-import { useEffect, useState, type MutableRefObject } from "react";
+import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { VocabularyProfile } from "./domain";
 export const cleanTerms = (text: string) => {
@@ -25,19 +25,27 @@ export default function Vocabulary({
   profiles,
   action,
   guard,
+  installed,
+  busy,
+  initialProfileId,
 }: {
   profiles: VocabularyProfile[];
+  initialProfileId?: string | null;
+  installed: boolean;
+  busy: boolean;
   action: Action;
   guard: MutableRefObject<(() => Promise<boolean>) | null>;
 }) {
+  const initialProfile =
+    profiles.find((p) => p.id === initialProfileId) ?? profiles[0];
   const [draft, setDraft] = useState<VocabularyProfile | null>(
-    profiles[0] ?? null,
+    initialProfile ?? null,
   );
   const [original, setOriginal] = useState<VocabularyProfile | null>(
-    profiles[0] ?? null,
+    initialProfile ?? null,
   );
   const [termsText, setTermsText] = useState(
-    profiles[0]?.terms.join("\n") ?? "",
+    initialProfile?.terms.join("\n") ?? "",
   );
   const [quick, setQuick] = useState("");
   const [error, setError] = useState("");
@@ -119,6 +127,50 @@ export default function Vocabulary({
   const promptBytes = edited
     ? new TextEncoder().encode(profilePrompt(edited)).length
     : 0;
+  const promptText = edited ? profilePrompt(edited) : "";
+  const latestPrompt = useRef(promptText);
+  latestPrompt.current = promptText;
+  const [counted, setCounted] = useState<{
+    text: string;
+    count: number;
+    used: number;
+    limit: number;
+  } | null>(null);
+  const [countError, setCountError] = useState("");
+  const [failedPrompt, setFailedPrompt] = useState<string | null>(null);
+  useEffect(() => {
+    if (
+      !installed ||
+      busy ||
+      counted?.text === promptText ||
+      failedPrompt === promptText
+    )
+      return;
+    const timer = setTimeout(() => {
+      void action("prompt_info", { prompt: promptText })
+        .then((result) => {
+          if (
+            latestPrompt.current === promptText &&
+            result &&
+            typeof result === "object" &&
+            "count" in result
+          ) {
+            setCounted({
+              text: promptText,
+              ...(result as { count: number; used: number; limit: number }),
+            });
+            setCountError("");
+          }
+        })
+        .catch(() => {
+          if (latestPrompt.current === promptText) {
+            setCountError("Compteur exact temporairement indisponible.");
+            setFailedPrompt(promptText);
+          }
+        });
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [promptText, installed, busy, counted?.text, failedPrompt, action]);
   return (
     <>
       <div className="heading">
@@ -322,11 +374,19 @@ export default function Vocabulary({
               transcription pour orienter l’orthographe. Ultra utilise les
               termes uniquement pour la relecture.
             </p>
-            <small>
-              ≤ {promptBytes} tokens (borne UTF-8 prudente) · limite d’invite :
-              224 tokens. Le moteur applique la limite avec son vrai tokenizer.
+            <small role="status">
+              {counted?.text === promptText
+                ? `${counted.count} tokens · ${counted.used} transmis · limite ${counted.limit}`
+                : installed
+                  ? busy
+                    ? "Comptage disponible après le traitement en cours."
+                    : "Calcul des tokens Whisper…"
+                  : `≤ ${promptBytes} tokens (borne UTF-8 prudente). Installez Whisper Turbo pour le comptage exact.`}{" "}
+              {countError}
             </small>
-            {promptBytes > 224 && (
+            {(counted?.text === promptText
+              ? counted.count > counted.limit
+              : promptBytes > 224) && (
               <p className="alert" role="status">
                 L’invite et les termes peuvent dépasser la limite. Whisper les
                 tronquera à une frontière de token ; privilégiez les termes

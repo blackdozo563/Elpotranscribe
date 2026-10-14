@@ -107,7 +107,7 @@ final class WhisperOutput {
 
 }
 
-func transcribeWhisper(root: URL, engine: String, source: String, language: String?) throws {
+func transcribeWhisper(root: URL, engine: String, source: String, language: String?, prompt: String? = nil) throws {
     _ = try WhisperModel.get(engine)
     let manifest = try JSONDecoder().decode(Manifest.self, from: Data(contentsOf: root.appendingPathComponent(engine + ".json")))
     let directory = try installedDirectory(root: root, engine: engine, manifest: manifest)
@@ -118,26 +118,41 @@ func transcribeWhisper(root: URL, engine: String, source: String, language: Stri
     let count = try floatAudio(URL(fileURLWithPath: source), destination: temporary)
     guard count <= Int32.max else { throw Failure(message: "Audio trop long pour cette version Whisper ; divisez le fichier.") }
     let audio = try Data(contentsOf: temporary, options: .alwaysMapped)
+    var promptCount: Int32 = 0; var promptUsed: Int32 = 0; var promptLimit: Int32 = 224
     let output = WhisperOutput()
     let status = audio.withUnsafeBytes { samples in
         directory.appendingPathComponent("model.bin").path.withCString { model in
             (language ?? "auto").withCString { code in
-                elpo_whisper(model, code, samples.bindMemory(to: Float.self).baseAddress, Int32(count), Int32(min(4, ProcessInfo.processInfo.activeProcessorCount)), { user, text, length, start, end in
+                (prompt ?? "").withCString { initialPrompt in
+                elpo_whisper(model, code, samples.bindMemory(to: Float.self).baseAddress, Int32(count), Int32(min(4, ProcessInfo.processInfo.activeProcessorCount)), initialPrompt, &promptCount, &promptUsed, &promptLimit, { user, text, length, start, end in
                     guard let user, let text else { return }
                     Unmanaged<WhisperOutput>.fromOpaque(user).takeUnretainedValue().tokens.append(Data(bytes: text, count: Int(length)), start: start, end: end)
                 }, { user, text, length, start, end in
                     guard let user, let text else { return }
                     Unmanaged<WhisperOutput>.fromOpaque(user).takeUnretainedValue().appendSegment(Data(bytes: text, count: Int(length)), start: start, end: end)
                 }, Unmanaged.passUnretained(output).toOpaque())
+                }
             }
         }
     }
     guard status == 0 else { throw Failure(message: "Échec whisper.cpp (\(status))") }
     let result = try output.result()
-    emit(["engine": engine, "modelVersion": manifest.sources?.map(\.revision).joined(separator: " / ") ?? whisperRevision, "text": result.units.map(\.text).joined(separator: " "), "durationMs": count / 16, "processingTimeMs": try milliseconds(Date().timeIntervalSince(started)), "timingGranularity": result.granularity, "words": tokensJSON(output.tokens), "segments": try JSONSerialization.jsonObject(with: JSONEncoder().encode(output.segments))])
+    emit(["promptTokenCount": promptCount, "promptTokensUsed": promptUsed, "promptTokenLimit": promptLimit, "engine": engine, "modelVersion": manifest.sources?.map(\.revision).joined(separator: " / ") ?? whisperRevision, "text": result.units.map(\.text).joined(separator: " "), "durationMs": count / 16, "processingTimeMs": try milliseconds(Date().timeIntervalSince(started)), "timingGranularity": result.granularity, "words": tokensJSON(output.tokens), "segments": try JSONSerialization.jsonObject(with: JSONEncoder().encode(output.segments))])
 }
 
 private func tokensJSON(_ tokens: WhisperTokens) -> Any {
     guard !tokens.invalid else { return [[String: Any]]() }
     return (try? JSONSerialization.jsonObject(with: JSONEncoder().encode(tokens.words))) ?? [[String: Any]]()
+}
+
+func whisperPromptInfo(root: URL, engine: String, prompt: String) throws {
+    let manifest = try JSONDecoder().decode(Manifest.self, from: Data(contentsOf: root.appendingPathComponent(engine + ".json")))
+    let directory = try installedDirectory(root: root, engine: engine, manifest: manifest)
+    guard manifest.sdk == whisperRevision, manifest.files == (try modelHashes(directory)) else { throw Failure(message: "Intégrité Whisper incorrecte. Réinstallez le modèle.") }
+    var count: Int32 = 0; var used: Int32 = 0; var limit: Int32 = 224
+    let status = directory.appendingPathComponent("model.bin").path.withCString { model in
+        prompt.withCString { text in elpo_whisper_prompt_info(model, text, &count, &used, &limit) }
+    }
+    guard status == 0 else { throw Failure(message: "Comptage des tokens Whisper impossible.") }
+    emit(["count":count,"used":used,"limit":limit,"truncated":count > used])
 }

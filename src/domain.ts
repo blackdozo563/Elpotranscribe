@@ -37,6 +37,7 @@ export interface Job {
   language: string;
   modelVersion?: string | null;
   timingNote?: string | null;
+  profileSnapshot?: VocabularyProfile | null;
   verificationStatus?: string | null;
   verificationError?: string | null;
   verification?: {
@@ -48,6 +49,7 @@ export interface Job {
       approximate: boolean;
       differences: Array<{
         cueIndex: number;
+        profileTerm?: boolean;
         primaryText: string;
         candidateText: string | null;
         alternativeText: string;

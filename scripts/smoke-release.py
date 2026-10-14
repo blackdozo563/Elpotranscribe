@@ -31,7 +31,15 @@ with tempfile.TemporaryDirectory(prefix='elpo-release-') as folder:
     env.update(ELPO_TEST_HELPER=str(helper),ELPO_TEST_MODELS=str(models),ELPO_TEST_AUDIO=str(audio),ELPO_TEST_LANGUAGE='fr',ELPO_TEST_EXPECTED='bonjour')
     for engine in ['ultra','whisper-turbo']:
         call({'action':'install','models':str(models),'engine':engine})
-        value = call({'action':'transcribe','models':str(models),'source':str(audio),'language':'fr','engine':engine})
+        request={'action':'transcribe','models':str(models),'source':str(audio),'language':'fr','engine':engine}
+        if engine=='whisper-turbo':
+            request['whisperPrompt']='Bonjour. Transcription française. ' + 'Évangile, Psaume, Kyrie, Magnificat. '*300
+            info=call({'action':'prompt-info','models':str(models),'engine':engine,'whisperPrompt':request['whisperPrompt']})
+            assert info['count']>info['limit'] and info['used']<=info['limit']<=224, info
+        value = call(request)
+        if engine=='whisper-turbo':
+            assert value['promptTokenCount']>value['promptTokenLimit']
+            assert value['promptTokensUsed']<=value['promptTokenLimit']<=224
         assert 'bonjour' in value['text'].lower(), value['text']
         path = root/'target'/f'smoke-{engine}-fr-short.json'
         path.write_text(json.dumps(value,ensure_ascii=False))

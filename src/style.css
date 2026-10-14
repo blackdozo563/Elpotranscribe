@@ -1093,3 +1093,21 @@ input[type="checkbox"] {
     grid-template-columns: 1fr;
   }
 }
+
+.profile-near-misses {
+  width: 100%;
+  padding: 12px;
+  border-top: 1px solid #55416d;
+  display: grid;
+  gap: 8px;
+}
+.profile-near-misses mark {
+  background: #4a355e;
+  color: #f1dbff;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.review-priority {
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
