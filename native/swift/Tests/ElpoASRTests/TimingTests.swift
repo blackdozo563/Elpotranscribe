@@ -25,8 +25,8 @@ final class TimingTests: XCTestCase {
     func testWhisperUTF8TokensUseRecognizedTimes() {
         let collector = WhisperTokens()
         let utf8 = Array(" été".utf8)
-        collector.append(Data(utf8.prefix(3)), start: 120, end: 200)
-        collector.append(Data(utf8.dropFirst(3)), start: 200, end: 360)
+        collector.append(Data(utf8.prefix(2)), start: 120, end: 200)
+        collector.append(Data(utf8.dropFirst(2)), start: 200, end: 360)
         collector.append(Data(" prochain".utf8), start: 400, end: 700)
         collector.flush()
         XCTAssertFalse(collector.invalid)

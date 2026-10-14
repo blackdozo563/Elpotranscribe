@@ -14,6 +14,15 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/cache/restore@v4
+        id: cache
+        with:
+          path: |
+            target/qwen-packages
+            target/qwen-xcode
+            target/smoke-models
+          key: qwen-arm64-${{ hashFiles('native/qwen/Package.resolved') }}-${{ github.run_id }}
+          restore-keys: qwen-arm64-${{ hashFiles('native/qwen/Package.resolved') }}-
       - name: Build real Qwen helper and Metal resources
         run: |
           mkdir -p target
@@ -31,3 +40,11 @@ jobs:
           name: qwen-validation
           path: target/smoke-qwen-*.json
           if-no-files-found: ignore
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: |
+            target/qwen-packages
+            target/qwen-xcode
+            target/smoke-models
+          key: ${{ steps.cache.outputs.cache-primary-key }}

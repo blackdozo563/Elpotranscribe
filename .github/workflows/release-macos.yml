@@ -64,6 +64,7 @@ jobs:
       - name: Build native engines
         run: |
           mkdir -p target
+          rm -f target/smoke-result.json target/smoke-result.srt target/smoke-whisper-*.json target/smoke-whisper-*.srt
           set +e
           set -o pipefail
           npm run native:build 2>&1 | tee target/native-build.log
