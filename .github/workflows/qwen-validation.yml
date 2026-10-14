@@ -1,0 +1,33 @@
+name: Qwen native integration
+on:
+  push:
+    branches: [qwen-integration]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: qwen-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  qwen:
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Build real Qwen helper and Metal resources
+        run: |
+          mkdir -p target
+          set +e
+          set -o pipefail
+          bash scripts/build-qwen.sh 2>&1 | tee target/qwen-build.log
+          result=$?
+          if [ "$result" -ne 0 ]; then python3 scripts/report-build-errors.py target/qwen-build.log; fi
+          exit "$result"
+      - name: Real Qwen 0.6B and 1.7B inference with raw alignment
+        run: python3 scripts/smoke-qwen.py src-tauri/binaries/elpo-qwen-aarch64-apple-darwin
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: qwen-validation
+          path: target/smoke-qwen-*.json
+          if-no-files-found: ignore

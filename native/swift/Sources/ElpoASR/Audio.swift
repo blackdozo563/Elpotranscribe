@@ -1,0 +1,39 @@
+import Foundation
+import AVFoundation
+
+// Decode and resample in bounded buffers; never retain an entire recording in a
+// Swift array. whisper.cpp reads the resulting disk-backed Float32 mapping.
+func floatAudio(_ source: URL, destination: URL) throws -> Int {
+    let input = try AVAudioFile(forReading: source)
+    guard let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false),
+          let converter = AVAudioConverter(from: input.processingFormat, to: format),
+          let inBuffer = AVAudioPCMBuffer(pcmFormat: input.processingFormat, frameCapacity: 4096),
+          let outBuffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4096) else {
+        throw Failure(message: "Conversion audio 16 kHz indisponible")
+    }
+    guard FileManager.default.createFile(atPath: destination.path, contents: nil) else { throw Failure(message: "Fichier temporaire inaccessible") }
+    let file = try FileHandle(forWritingTo: destination); defer { try? file.close() }
+    var count = 0
+    while true {
+        var conversionError: NSError?
+        var readError: Error?
+        let status = converter.convert(to: outBuffer, error: &conversionError) { requested, state in
+            do {
+                try input.read(into: inBuffer, frameCount: min(requested, inBuffer.frameCapacity))
+                state.pointee = inBuffer.frameLength == 0 ? .endOfStream : .haveData
+                return inBuffer.frameLength == 0 ? nil : inBuffer
+            } catch { readError = error; state.pointee = .endOfStream; return nil }
+        }
+        if let error = readError { throw error }
+        if let error = conversionError { throw error }
+        if outBuffer.frameLength > 0, let channel = outBuffer.floatChannelData?[0] {
+            count += Int(outBuffer.frameLength)
+            guard count <= Int(Int32.max) else { throw Failure(message: "Audio trop long pour Whisper") }
+            try file.write(contentsOf: Data(bytes: channel, count: Int(outBuffer.frameLength) * MemoryLayout<Float>.size))
+        }
+        if status == .endOfStream { break }
+        if status == .error { throw Failure(message: "Échec de conversion audio") }
+    }
+    guard count > 0 else { throw Failure(message: "Audio vide") }; return count
+}
+

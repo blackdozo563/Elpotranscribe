@@ -10,6 +10,9 @@ target/
 .env*
 !.env.example
 native/swift/.build/
+native/qwen/.build/
+native/qwen/.swiftpm/
+native/qwen/Sources/ElpoQwen/Generated/
 src-tauri/binaries/
 src-tauri/gen/
 playwright-report/
