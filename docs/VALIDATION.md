@@ -63,7 +63,7 @@ Les tests Rust de comparaison couvrent « ce foir »/« ce soir », les moteurs 
 
 La CI vérifie le fonctionnement, pas une supériorité de précision française/anglaise entre modèles. La précision des mots et des temps n’a pas été mesurée contre une vérité terrain annotée. Les mesures éventuelles de temps/RSS du runner ne décrivent pas un M2 8 Go ni la consommation totale de l’application. Les essais physiques M1/M2 8 Go de Turbo, l’installation sur Mac propre, l’usage totalement déconnecté et les dialogues/Finder restent à réaliser. Gemini est supprimé. Qwen reste expérimental, désactivé et absent du DMG.
 
-## Préversion 1.1.1 en cours de validation native
+## Préversion 1.1.1 : publication bloquée par le test long
 
 Source : `7bbd18e`, tag `v1.1.1`. [Suivi de la validation et de la publication conditionnelle du DMG](https://github.com/blackdozo563/Elpotranscribe/actions/runs/38620458984). Le tag déclenche les contrôles ; il ne constitue pas, à lui seul, une preuve de réussite ou de disponibilité du téléchargement.
 
@@ -71,4 +71,8 @@ Contrôles Linux réussis : installation verrouillée npm, build TypeScript/Vite
 
 Le correctif Whisper conserve les vrais temps des passages lorsque les temps de mots manquent ou leur chronologie empêche une segmentation valide. Il affiche alors un avertissement : certains passages peuvent dépasser la longueur ou la durée souhaitée. Aucun temps de mot n’est inventé. Le correctif de suppression utilise un dialogue natif ; la suppression retire le résultat du lot et de l’historique et conserve l’audio source et les exports. Nouveau lot archive les résultats.
 
-La validation native est complétée par un MP3 français synthétique, stéréo 44,1 kHz, de 20 minutes, traité avec Whisper Turbo dans la vraie file à moteur par défaut. Ce scénario doit vérifier SRT, conservation de l’audio et suppression persistée. Son résultat n’est pas encore confirmé ici. L’utilisateur décrit un MP3 français de 17,8 Mo et 20 minutes ; cet enregistrement n’a pas été fourni et n’est pas prétendu reproduit.
+La validation native est complétée par un MP3 français synthétique, stéréo 44,1 kHz, de 20 minutes, traité avec Whisper Turbo dans la vraie file à moteur par défaut. Ce scénario doit vérifier SRT, conservation de l’audio et suppression persistée. Ce scénario a échoué après 1 953,74 secondes : des temps de passages Whisper étaient invalides. La publication a été bloquée ; aucun DMG 1.1.1 n’a été publié. L’utilisateur décrit un MP3 français de 17,8 Mo et 20 minutes ; cet enregistrement n’a pas été fourni et n’est pas prétendu reproduit.
+
+## Préversion 1.1.2 en cours de validation
+
+Source : `d174f65`, tag `v1.1.2`. [Validation de publication](https://github.com/blackdozo563/Elpotranscribe/actions/runs/38645820249). Le texte des passages de durée nulle est regroupé avec un passage voisin en conservant les bornes extérieures fournies par le moteur ; les passages qui se chevauchent sont regroupés de même. Une suite sans aucune durée positive reste refusée, ainsi que les temps négatifs ou inversés. Aucun temps de mot n’est créé. Trois tests Swift supplémentaires couvrent ces cas ; leur exécution native reste à confirmer. Les tests Linux de build, 8 tests TypeScript et 22 tests Rust ont réussi.
