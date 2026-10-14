@@ -394,3 +394,59 @@ test("l’éditeur signale les temps par passages et conserve l’export", async
     page.getByRole("button", { name: "SRT à côté de l’audio", exact: true }),
   ).toBeEnabled();
 });
+
+test("éditeur : rechercher, naviguer, remplacer tout et annuler sans changer les temps", async ({
+  page,
+}) => {
+  await localReviewFixture(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Ouvrir", exact: true }).click();
+  const cue = page.getByRole("textbox", { name: "Sous-titre 1", exact: true });
+  await cue.fill("Ce soir, CE SOIR et soirée.");
+  await page.keyboard.press("Control+f");
+  await page.getByLabel("Rechercher", { exact: true }).fill("soir");
+  await expect(
+    page.getByText("1 / 3 occurrences", { exact: true }),
+  ).toBeVisible();
+  await page.getByLabel("Mot entier", { exact: true }).check();
+  await expect(
+    page.getByText("1 / 2 occurrences", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Suivant", exact: true }).click();
+  await expect(cue).toBeFocused();
+  expect(
+    await cue.evaluate((el: HTMLTextAreaElement) =>
+      el.value.slice(el.selectionStart, el.selectionEnd),
+    ),
+  ).toBe("SOIR");
+  await page.getByRole("button", { name: "Précédent", exact: true }).click();
+  expect(
+    await cue.evaluate((el: HTMLTextAreaElement) =>
+      el.value.slice(el.selectionStart, el.selectionEnd),
+    ),
+  ).toBe("soir");
+  await page.getByLabel("Remplacer par", { exact: true }).fill("demain");
+  await page.getByRole("button", { name: "Remplacer", exact: true }).click();
+  await expect(cue).toHaveValue("Ce demain, CE SOIR et soirée.");
+  await page.getByRole("button", { name: "Annuler", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Remplacer tout", exact: true })
+    .click();
+  await expect(cue).toHaveValue("Ce demain, CE demain et soirée.");
+  await expect(page.getByLabel("Début 1", { exact: true })).toHaveValue(
+    "00:00:00,100",
+  );
+  await expect(page.getByLabel("Fin 1", { exact: true })).toHaveValue(
+    "00:00:02,500",
+  );
+  await page.getByRole("button", { name: "Annuler", exact: true }).click();
+  await expect(cue).toHaveValue("Ce soir, CE SOIR et soirée.");
+  await page.getByLabel("Respecter la casse", { exact: true }).check();
+  await expect(
+    page.getByText("1 / 1 occurrences", { exact: true }),
+  ).toBeVisible();
+  await page.getByLabel("Rechercher", { exact: true }).fill("absent");
+  await expect(
+    page.getByRole("button", { name: "Remplacer tout", exact: true }),
+  ).toBeDisabled();
+});

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke, convertFileSrc, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { findMatches, replaceMatches } from "./search";
 import {
   AudioLines,
   LayoutDashboard,
@@ -1331,6 +1332,45 @@ function Editor({
   );
   const dirty = saved !== JSON.stringify(state.present);
   const needsExport = exportSaved !== JSON.stringify(state.present);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [replacement, setReplacement] = useState("");
+  const [caseSensitive, setCaseSensitive] = useState(false);
+  const [wholeWord, setWholeWord] = useState(false);
+  const [matchIndex, setMatchIndex] = useState(0);
+  const searchInput = useRef<HTMLInputElement>(null);
+  const matches = findMatches(state.present, query, {
+    caseSensitive,
+    wholeWord,
+  });
+  const currentMatchIndex = Math.min(
+    matchIndex,
+    Math.max(0, matches.length - 1),
+  );
+  const selectMatch = (index: number) => {
+    const match = matches[index];
+    if (!match) return;
+    setMatchIndex(index);
+    setSelectedCue(match.cue);
+    const field = textarea.current.get(match.cue);
+    field?.focus({ preventScroll: true });
+    field?.setSelectionRange(match.start, match.end);
+    field?.scrollIntoView({ block: "center", behavior: "smooth" });
+  };
+  useEffect(() => {
+    if (searchOpen) searchInput.current?.focus();
+  }, [searchOpen]);
+  useEffect(() => {
+    const shortcut = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        setSearchOpen(true);
+        searchInput.current?.focus();
+      } else if (event.key === "Escape") setSearchOpen(false);
+    };
+    window.addEventListener("keydown", shortcut);
+    return () => window.removeEventListener("keydown", shortcut);
+  }, []);
   const update = (cues: Cue[]) => setState((s) => change(s, cues));
   const attempt = (fn: () => void) => {
     try {
@@ -1541,6 +1581,12 @@ function Editor({
             Fusionner
           </button>
           <button
+            aria-expanded={searchOpen}
+            onClick={() => setSearchOpen(!searchOpen)}
+          >
+            Rechercher / Remplacer
+          </button>
+          <button
             onClick={() => {
               const last = state.present.at(-1)?.endMs ?? 0;
               update([
@@ -1558,6 +1604,126 @@ function Editor({
           </button>
         </div>
       </div>
+      {searchOpen && (
+        <section
+          className="panel search-panel"
+          aria-label="Rechercher et remplacer"
+        >
+          <div className="button-row">
+            <label>
+              Rechercher
+              <input
+                ref={searchInput}
+                value={query}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  setMatchIndex(0);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && matches.length) {
+                    e.preventDefault();
+                    selectMatch(
+                      e.shiftKey
+                        ? (currentMatchIndex - 1 + matches.length) %
+                            matches.length
+                        : currentMatchIndex,
+                    );
+                  }
+                }}
+              />
+            </label>
+            <label>
+              Remplacer par
+              <input
+                value={replacement}
+                onChange={(e) => setReplacement(e.target.value)}
+              />
+            </label>
+            <button
+              disabled={!matches.length}
+              onClick={() =>
+                selectMatch(
+                  (currentMatchIndex - 1 + matches.length) % matches.length,
+                )
+              }
+            >
+              Précédent
+            </button>
+            <button
+              disabled={!matches.length}
+              onClick={() =>
+                selectMatch((currentMatchIndex + 1) % matches.length)
+              }
+            >
+              Suivant
+            </button>
+            <button
+              disabled={!matches.length}
+              onClick={() =>
+                update(
+                  replaceMatches(
+                    state.present,
+                    [matches[currentMatchIndex]],
+                    replacement,
+                  ),
+                )
+              }
+            >
+              Remplacer
+            </button>
+            <button
+              disabled={!matches.length}
+              onClick={() => {
+                update(replaceMatches(state.present, matches, replacement));
+                setMatchIndex(0);
+              }}
+            >
+              Remplacer tout
+            </button>
+            <button
+              aria-label="Fermer la recherche"
+              onClick={() => setSearchOpen(false)}
+            >
+              <X size={16} />
+            </button>
+          </div>
+          <div className="button-row search-options">
+            <label>
+              <input
+                type="checkbox"
+                checked={caseSensitive}
+                onChange={(e) => {
+                  setCaseSensitive(e.target.checked);
+                  setMatchIndex(0);
+                }}
+              />{" "}
+              Respecter la casse
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={wholeWord}
+                onChange={(e) => {
+                  setWholeWord(e.target.checked);
+                  setMatchIndex(0);
+                }}
+              />{" "}
+              Mot entier
+            </label>
+            <span role="status">
+              {matches.length
+                ? `${currentMatchIndex + 1} / ${matches.length} occurrences`
+                : query
+                  ? "Aucune occurrence"
+                  : "Saisissez un texte à rechercher"}
+            </span>
+          </div>
+          <small>
+            Recherche dans toute la transcription · ⌘F / Ctrl+F · Les
+            remplacements sont annulables. Les horodatages sont conservés.
+          </small>
+        </section>
+      )}
       <div className="cue-list">
         {state.present.map((cue, i) => (
           <section
