@@ -7,7 +7,20 @@ repository="$PWD"
 mkdir -p native/qwen/Sources/ElpoQwen/Generated
 cp native/swift/Sources/ElpoASR/{Support,Audio}.swift native/qwen/Sources/ElpoQwen/Generated/
 cd native/qwen
-xcodebuild -scheme elpo-qwen -configuration Release \
+xcodebuild -list -json -clonedSourcePackagesDirPath "$repository/target/qwen-packages" > "$repository/target/qwen-schemes.json"
+scheme="$(python3 - "$repository/target/qwen-schemes.json" <<'PY'
+import json,sys
+value=json.load(open(sys.argv[1]))
+schemes=value.get('workspace',value.get('project',{})).get('schemes',[])
+for candidate in ['ElpoQwen','elpo-qwen','ElpoQwen-Package']:
+    if candidate in schemes:
+        print(candidate)
+        break
+else:
+    raise SystemExit('No Qwen scheme in workspace: '+repr(schemes))
+PY
+)"
+xcodebuild -scheme "$scheme" -configuration Release -jobs 3 \
   -destination 'platform=macOS,arch=arm64' -derivedDataPath "$repository/target/qwen-xcode" \
   -clonedSourcePackagesDirPath "$repository/target/qwen-packages" \
   MACOSX_DEPLOYMENT_TARGET=14.0 CODE_SIGNING_ALLOWED=NO build
