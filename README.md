@@ -2,7 +2,7 @@
 
 Transcription audio intelligente pour macOS Apple Silicon. Interface française, traitement local, édition de sous-titres et exports SRT/TXT/VTT/ZIP.
 
-**Version du projet : 1.0.0, en développement. Aucun DMG ni résultat d’inférence macOS n’a encore été validé dans cet environnement Linux. Ce dépôt n’est pas une livraison finale conforme à tout le cahier des charges.**
+**Préversion 1.0.0. Le parcours local Parakeet Ultra, la file et le DMG ARM64 ont passé la validation native sur macOS. Les moteurs avancés et la validation physique M1/M2 8 Go restent à compléter : cette préversion ne couvre pas tout le cahier des charges.**
 
 Dépôt prévu : https://github.com/blackdozo563/Elpotranscribe
 
@@ -19,7 +19,7 @@ Dépôt prévu : https://github.com/blackdozo563/Elpotranscribe
 - Exports atomiques, confirmation d’écrasement, conservation des noms, ZIP avec collisions résolues, révélation Finder.
 - Historique JSON écrit atomiquement dans Application Support, sans duplication de l’audio ; bouton Nouveau lot pour conserver les résultats et libérer la file ; liaison d’un audio déplacé.
 
-Le pont Swift compile sur le runner macOS ARM64 et son étape de tests réussit. L’inférence et les parcours de l’application macOS restent **à valider de bout en bout**. Les preuves obtenues sous Linux sont séparées dans [docs/VALIDATION.md](docs/VALIDATION.md).
+La [CI native réussie](https://github.com/blackdozo563/Elpotranscribe/actions/runs/38561351957) exécute une vraie transcription depuis le moteur du DMG, la file, les exports dans deux dossiers, la reprise après erreur et l’annulation. Les contrôles de fermeture et de nettoyage passent également. Les tests de l’interface utilisent une simulation IPC ; la vérification graphique sur un Mac utilisateur reste nécessaire. Voir [docs/VALIDATION.md](docs/VALIDATION.md).
 
 ## Développement
 
@@ -62,13 +62,13 @@ bash scripts/validate-dmg.sh target/aarch64-apple-darwin/release/bundle/dmg/*.dm
 
 La CI `.github/workflows/release-macos.yml` utilise le runner ARM64 officiel `macos-26`, lance les contrôles portables, compile le pont Swift, teste Rust/Swift, produit le DMG puis exécute une **vraie inférence à partir du moteur contenu dans le DMG** avant de déposer l’artefact nommé `ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.0.0.dmg`.
 
-L’existence du label est vérifiée dans `actions/runner-images` ; les droits de ce dépôt, le budget Actions et la disponibilité effective du runner n’ont pas pu être vérifiés via l’API GitHub. Aucun workflow réussi n’est revendiqué. Un tag `v1.0.0` ou le déclenchement manuel avec `publish=true` publie une préversion uniquement après succès des contrôles. Ne créer le tag qu’après revue de l’état réel du projet.
+Le runner `macos-26` a effectivement compilé et validé cette version dans ce dépôt. Un tag `v1.0.0` ou le déclenchement manuel avec `publish=true` publie une préversion uniquement après succès des contrôles. Les résultats et les artefacts sont consultables dans [Actions](https://github.com/blackdozo563/Elpotranscribe/actions).
 
 La signature par défaut est ad hoc, non notariée. Pour une distribution Developer ID, fournir les secrets Apple appropriés dans GitHub Actions ; voir [docs/MACOS.md](docs/MACOS.md). Ne jamais incorporer les clés au code.
 
 ## Utilisation du futur build validé
 
-1. Télécharger le DMG depuis un véritable artefact ou une release réussie ; aucune URL de téléchargement n’existe encore dans cette livraison.
+1. Télécharger le DMG validé depuis [Releases](https://github.com/blackdozo563/Elpotranscribe/releases) ou depuis les artefacts d’une compilation Actions réussie. Le nom attendu est `ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.0.0.dmg`.
 2. Déplacer ELPOTRANSCRIBE.app vers Applications, puis l’ouvrir. Un build ad hoc peut être bloqué par Gatekeeper ; vérifier sa provenance et sa somme SHA-256, puis utiliser l’autorisation ciblée dans Réglages Système → Confidentialité et sécurité si macOS le propose. Ne pas désactiver Gatekeeper globalement.
 3. Dans Modèles IA, choisir Installer Parakeet Ultra. La connexion est nécessaire uniquement pour cette installation explicite. L’attente est indéterminée, sans pourcentage inventé.
 4. Importer jusqu’à dix audios, choisir une langue européenne, puis Tout transcrire. Les fichiers sont traités un à un.
@@ -78,7 +78,7 @@ La signature par défaut est ad hoc, non notariée. Pour une distribution Develo
 
 ## Limites actuelles
 
-- Inférence Ultra, backend Tauri, DMG, Finder et permissions macOS : validation sur Mac en attente.
+- Inférence Ultra, file réelle, exports, backend Rust, signatures et DMG : contrôles natifs réussis en CI ARM64. Dialogues, Finder, lecture dans l’interface et installation sur un Mac propre : tests manuels encore nécessaires.
 - M1 8 Go et M2 8 Go : objectifs, **pas de certification ni de benchmark réalisé**. La surveillance mémoire est une protection supplémentaire, pas une garantie contre tout épuisement mémoire.
 - Qwen3-ASR 0.6B/1.7B, whisper.cpp, comparaison IA, Gemini/Keychain, vocabulaire conditionnant le modèle, import de dictionnaires, nettoyage fluide, forme d’onde et mise à jour automatique : non implémentés. Aucun moteur incomplet n’est proposé à la sélection.
 - L’arabe n’est pas pris en charge par le moteur Ultra de cette version ; les fonctions d’édition/export Unicode sont testées avec du texte arabe.

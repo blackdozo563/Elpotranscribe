@@ -4,7 +4,7 @@
 
 La machine cloud est Linux x86_64 : aucun SDK Apple, Xcode ni outil `hdiutil`. La compilation croisée s’arrête sur Objective-C ; elle ne constitue pas un contrôle complet du backend.
 
-Le runner `macos-26` est ARM64 selon le catalogue officiel consulté le 14 octobre 2026. Son utilisation effective dépend des droits et crédits du dépôt.
+Le runner `macos-26` est ARM64 selon le catalogue officiel consulté le 14 octobre 2026. Son utilisation effective est confirmée par la CI réussie de ce dépôt : compilation, tests Swift/Rust, DMG et inférence empaquetée.
 
 Le workflow accepte les secrets GitHub `APPLE_CERTIFICATE` (certificat p12 encodé base64), `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY` et, pour la notarisation avec identifiant Apple, `APPLE_ID`, `APPLE_PASSWORD` (mot de passe d’application) et `APPLE_TEAM_ID`. Ne fournir ces éléments que si le compte est autorisé. Le moteur Swift embarqué est signé ad hoc pendant sa préparation, puis le bundler Tauri doit le signer avec le bundle si Developer ID est configuré. Vérifier ce comportement sur le DMG final avec `codesign --verify --deep --strict` et `spctl --assess --type execute`.
 
@@ -14,7 +14,7 @@ Pour un build Developer ID, ajouter un contrôle `xcrun stapler validate` et `sp
 
 ## Contrôles requis avant une vraie v1.0.0
 
-- Exécuter la CI et examiner les tests Swift, la compilation Rust native et l’inférence de l’exécutable empaqueté.
+- La CI native réussit ; la relancer après toute modification fonctionnelle et examiner les contrôles de la file et de l’inférence empaquetée.
 - Tester sans connexion après installation du modèle, puis sans outils de développement installés.
 - Tester M1 et M2 avec 8 Go : longs audios, annulation, pression mémoire, temps de traitement et mémoire maximale.
 - Tester les sélecteurs, le glisser-déposer, onze fichiers, un audio corrompu et les codecs réellement installés.
