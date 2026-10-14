@@ -867,7 +867,11 @@ function Editor({
     [missing, setMissing] = useState(false);
   const audio = useRef<HTMLAudioElement>(null),
     textarea = useRef<Map<number, HTMLTextAreaElement>>(new Map());
+  const [exportSaved, setExportSaved] = useState<string | null>(
+    job.dirty ? null : JSON.stringify(job.cues),
+  );
   const dirty = saved !== JSON.stringify(state.present);
+  const needsExport = exportSaved !== JSON.stringify(state.present);
   const update = (cues: Cue[]) => setState((s) => change(s, cues));
   const attempt = (fn: () => void) => {
     try {
@@ -885,7 +889,13 @@ function Editor({
   const exportFile = async (format: string, original: boolean) => {
     try {
       await save();
-      await action("export_job", { id: job.id, format, original });
+      const result = await action("export_job", {
+        id: job.id,
+        format,
+        original,
+      });
+      if (format === "srt" && typeof result === "string")
+        setExportSaved(JSON.stringify(state.present));
     } catch (e) {
       setError(String(e));
     }
@@ -946,7 +956,7 @@ function Editor({
           <p>
             {job.engine} ·{" "}
             {dirty ? "Modifications non enregistrées" : "Historique enregistré"}
-            {job.dirty ? " · Export SRT à mettre à jour" : ""}
+            {needsExport ? " · Export SRT à mettre à jour" : ""}
           </p>
         </div>
         <button

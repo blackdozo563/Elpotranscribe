@@ -13,10 +13,10 @@ Machine : Linux x86_64, Node 24.19.0, Rust 1.93.0. Date : 14 octobre 2026.
 | Schéma JSON Tauri, version CLI installée | Valide |
 | Syntaxe shell/Python des scripts | Vérifiée |
 | Audit npm des dépendances d’exécution | Aucune vulnérabilité signalée au moment du contrôle |
-| Backend Rust macOS | CI #1/#2 en échec de compilation (`&str` / `String` dans le pont stdin), correction apportée ; nouvelle validation en cours. La compilation croisée locale reste impossible sans SDK Apple. |
+| Backend Rust macOS | Compilation réussie sur macOS ARM64 en CI #3 après correction du type d’erreur du pont stdin. |
 | Pont Swift / tests Swift | Compilation réussie et étape de tests réussie sur le runner macOS ARM64, [CI #1](https://github.com/blackdozo563/Elpotranscribe/actions/runs/38556817791) ; non exécutables sur la machine Linux |
-| Initialisation et inférence Parakeet Ultra | Non exécutées ici ; test réel prévu dans la CI macOS |
-| DMG, ARM64, signatures et Finder | Non validés ; aucun DMG généré ici |
+| Parakeet Ultra | Téléchargement et initialisation réussis en CI #3 ; vérification d’intégrité interrompue par un mauvais chemin de cache dans le pont, corrigé via `Repo.parakeetUltra.folderName`. Inférence et file native en nouvelle validation. |
+| DMG, ARM64 et signatures | Bundle et DMG générés en CI #3 ; montage, ARM64 et signatures ad hoc vérifiés. Validation de l’inférence empaquetée encore en cours. Finder non testé graphiquement. |
 | M1 8 Go / M2 8 Go | Aucun test matériel ni mesure mémoire réalisé |
 | Qwen / Whisper / Gemini | Non implémentés, non testés, non sélectionnables |
 

@@ -57,7 +57,7 @@ func probe(_ path: String) throws -> UInt64 {
             }
             guard let path = request.models else { throw Failure(message: "Dossier du modèle absent") }
             let root = URL(fileURLWithPath: path, isDirectory: true)
-            let directory = root.appendingPathComponent("parakeet-ultra-coreml", isDirectory: true)
+            let directory = root.appendingPathComponent(Repo.parakeetUltra.folderName, isDirectory: true)
             let marker = root.appendingPathComponent("verified.json")
             if request.action == "install" {
                 try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

@@ -119,4 +119,7 @@ test("éditeur : modification, annulation et export par le pont natif simulé", 
   await expect(
     page.getByRole("textbox", { name: "Sous-titre 1", exact: true }),
   ).toHaveValue("Bonjour Lyon.");
+  await expect(
+    page.getByText("Export SRT à mettre à jour", { exact: false }),
+  ).toHaveCount(0);
 });

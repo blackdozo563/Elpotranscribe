@@ -499,7 +499,7 @@ fn save_settings(state: State<'_, AppState>, settings: Settings) -> Result<(), S
 fn save_edit(state: State<'_, AppState>, id: String, cues: Vec<Cue>) -> Result<(), String> {
     core::validate(&cues).map_err(err)?;
     state.modify(&id, |j| {
-        if j.status == "completed" {
+        if j.status == "completed" && j.cues != cues {
             j.cues = cues;
             j.dirty = true;
         }
@@ -745,8 +745,16 @@ mod integration_tests {
         let snapshot = state.snapshot().unwrap();
         assert!(!snapshot.busy);
         assert_eq!(snapshot.jobs[0].status, "failed");
-        assert_eq!(snapshot.jobs[1].status, "completed");
-        assert_eq!(snapshot.jobs[2].status, "completed");
+        assert_eq!(
+            snapshot.jobs[1].status, "completed",
+            "{:?}",
+            snapshot.jobs[1].error
+        );
+        assert_eq!(
+            snapshot.jobs[2].status, "completed",
+            "{:?}",
+            snapshot.jobs[2].error
+        );
         for audio in [&a, &b] {
             let output = audio.with_extension("srt");
             let data = fs::read_to_string(&output).unwrap();
