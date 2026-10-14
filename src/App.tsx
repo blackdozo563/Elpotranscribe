@@ -103,6 +103,7 @@ export default function App() {
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
     [working, setWorking] = useState(false),
+    [operation, setOperation] = useState<string | null>(null),
     [selected, setSelected] = useState<Job | null>(null);
   const desktop = isTauri() || "__TAURI_INTERNALS__" in window;
   const refresh = useCallback(async () => {
@@ -151,6 +152,7 @@ export default function App() {
         return;
       }
       setWorking(true);
+      setOperation(command);
       setError("");
       setNotice("");
       try {
@@ -161,6 +163,7 @@ export default function App() {
         setError(String(e));
         throw e;
       } finally {
+        setOperation(null);
         setWorking(false);
       }
     },
@@ -754,7 +757,7 @@ export default function App() {
                       disabled={data.busy || working}
                       install={() => run("install_model", { engine: "ultra" })}
                     />
-                    {working && (
+                    {working && operation === "install_model" && (
                       <p role="status">
                         Téléchargement et initialisation en cours. La durée
                         dépend de votre connexion ; aucun pourcentage estimé.

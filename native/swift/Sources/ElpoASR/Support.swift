@@ -23,7 +23,16 @@ func modelHashes(_ requestedDirectory: URL) throws -> [String: String] {
     for case let file as URL in files {
         let values = try file.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
         if values.isSymbolicLink == true { throw Failure(message: "Lien symbolique inattendu dans le modèle") }
-        if values.isRegularFile == true { result[String(file.path.dropFirst(directory.path.count + 1))] = try hashFile(file) }
+        if values.isRegularFile == true {
+            // macOS may enumerate /private/var while the root URL uses /var.
+            // Normalize both sides before deriving the relative asset name.
+            let canonical = file.resolvingSymlinksInPath().standardizedFileURL
+            let base = directory.pathComponents
+            let components = canonical.pathComponents
+            guard components.count > base.count, Array(components.prefix(base.count)) == base else { throw Failure(message: "Chemin de fichier hors du modèle") }
+            let relative = components.dropFirst(base.count).joined(separator: "/")
+            result[relative] = try hashFile(canonical)
+        }
     }
     guard !result.isEmpty else { throw Failure(message: "Modèle vide") }; return result
 }

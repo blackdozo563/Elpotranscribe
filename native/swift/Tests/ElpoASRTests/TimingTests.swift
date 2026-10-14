@@ -58,6 +58,7 @@ final class TimingTests: XCTestCase {
         try Data("verified model bytes".utf8).write(to: real.appendingPathComponent("weights.bin"))
         try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: real)
         XCTAssertEqual(try modelHashes(real), try modelHashes(alias))
+        XCTAssertEqual(Set(try modelHashes(alias).keys), Set(["weights.bin"]))
     }
 
 }
