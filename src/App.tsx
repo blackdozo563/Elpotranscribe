@@ -3,6 +3,7 @@ import { invoke, convertFileSrc, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { findMatches, replaceMatches } from "./search";
+import Vocabulary from "./Vocabulary";
 import {
   AudioLines,
   LayoutDashboard,
@@ -55,12 +56,20 @@ const navigation = [
   "Double vérification",
   "Modèles IA",
   "Paramètres",
+  "Vocabulaire",
 ];
-const icons = [LayoutDashboard, Plus, History, ScanText, Boxes, Settings2];
+const icons = [
+  LayoutDashboard,
+  Plus,
+  History,
+  ScanText,
+  Boxes,
+  Settings2,
+  ScanText,
+];
 const localEngines = [
   { id: "ultra", name: "Parakeet Ultra", disabled: false },
   { id: "whisper-turbo", name: "Whisper large-v3-turbo Q5_0", disabled: false },
-
 ];
 const engineName = (id: string) =>
   localEngines.find((engine) => engine.id === id)?.name ?? id;
@@ -95,6 +104,10 @@ export default function App() {
     [working, setWorking] = useState(false),
     [operation, setOperation] = useState<string | null>(null),
     [selected, setSelected] = useState<Job | null>(null);
+  const profileGuard = useRef<(() => Promise<boolean>) | null>(null);
+  const navigate = async (target: number) => {
+    if ((await profileGuard.current?.()) !== false) setPage(target);
+  };
   const desktop = isTauri() || "__TAURI_INTERNALS__" in window;
   const refresh = useCallback(async () => {
     if (desktop) setData(await invoke<Snapshot>("snapshot"));
@@ -220,7 +233,9 @@ export default function App() {
               <button
                 key={label}
                 className={page === i ? "nav active" : "nav"}
-                onClick={() => setPage(i)}
+                onClick={() => {
+                  void navigate(i).catch((e) => setError(String(e)));
+                }}
               >
                 <Icon size={18} />
                 {label}
@@ -292,7 +307,13 @@ export default function App() {
                 Mise à jour de modèles disponible. Téléchargez les nouvelles
                 versions sur ce Mac.
               </span>
-              <button onClick={() => setPage(4)}>Voir les modèles</button>
+              <button
+                onClick={() => {
+                  void navigate(4);
+                }}
+              >
+                Voir les modèles
+              </button>
             </div>
           )}
           {!desktop && (
@@ -472,6 +493,13 @@ export default function App() {
                         ))}
                       </select>
                     </label>
+                    <button
+                      onClick={() => {
+                        void navigate(6);
+                      }}
+                    >
+                      Modifier le profil…
+                    </button>
                   </section>
                   <section className="panel queue">
                     <div className="panel-heading">
@@ -827,7 +855,6 @@ export default function App() {
                       />
                     </section>
                   ))}
-
                 </>
               )}
               {page === 3 && (
@@ -844,6 +871,13 @@ export default function App() {
                     open={(job) => setSelected(job)}
                   />
                 </>
+              )}
+              {page === 6 && (
+                <Vocabulary
+                  profiles={data.profiles ?? []}
+                  action={action}
+                  guard={profileGuard}
+                />
               )}
               {page === 5 && (
                 <>
@@ -1139,8 +1173,7 @@ function Preferences({
   settings: Settings;
   save: (s: Settings) => Promise<void>;
 }) {
-  const [s, setS] = useState(settings),
-    [vocab, setVocab] = useState(settings.vocabulary.join("\n"));
+  const [s, setS] = useState(settings);
   return (
     <section className="panel preferences">
       <h2>Sous-titres</h2>
@@ -1228,31 +1261,10 @@ function Preferences({
         Les frontières utilisent les horodatages reconnus. Un mot long peut
         demander un réglage plus large.
       </p>
-      <h3>Vocabulaire de référence</h3>
-      <p>
-        Une entrée par ligne. Liste conservée pour votre relecture ; elle ne
-        modifie pas automatiquement les paroles reconnues.
-      </p>
-      <textarea
-        rows={5}
-        aria-label="Vocabulaire personnalisé"
-        value={vocab}
-        onChange={(e) => setVocab(e.target.value)}
-      />
       <button
         className="primary"
         onClick={() => {
-          void save({
-            ...s,
-            vocabulary: [
-              ...new Set(
-                vocab
-                  .split("\n")
-                  .map((v) => v.trim())
-                  .filter(Boolean),
-              ),
-            ],
-          }).catch(() => {});
+          void save(s).catch(() => {});
         }}
       >
         <Save size={16} />

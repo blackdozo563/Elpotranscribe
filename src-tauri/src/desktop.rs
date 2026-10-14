@@ -931,6 +931,67 @@ fn reset_profile(
     Ok(saved)
 }
 #[tauri::command]
+async fn import_profile(
+    state: State<'_, AppState>,
+) -> Result<Option<core::vocabulary::Profile>, String> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Profil JSON", &["json"])
+            .pick_file()
+        else {
+            return Ok(None);
+        };
+        if fs::metadata(&path).map_err(err)?.len() > 1024 * 1024 {
+            return Err("Profil trop volumineux (maximum 1 Mo).".into());
+        }
+        let mut profile: core::vocabulary::Profile =
+            serde_json::from_slice(&fs::read(path).map_err(err)?).map_err(err)?;
+        profile.id = uuid::Uuid::new_v4().to_string();
+        profile.builtin = false;
+        let mut profiles = state.data.profiles.lock().map_err(err)?;
+        let mut next = profiles.clone();
+        let profile = next.upsert(profile).map_err(err)?;
+        next.save(&state.data.root.join("profiles.json"))
+            .map_err(err)?;
+        *profiles = next;
+        Ok(Some(profile))
+    })
+    .await
+    .map_err(err)?
+}
+#[tauri::command]
+async fn export_profile(state: State<'_, AppState>, id: String) -> Result<Option<String>, String> {
+    let profile = state
+        .data
+        .profiles
+        .lock()
+        .map_err(err)?
+        .profiles
+        .iter()
+        .find(|p| p.id == id)
+        .cloned()
+        .ok_or("Profil inconnu")?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Profil JSON", &["json"])
+            .set_file_name(format!("{}.json", profile.name.replace(['/', ':'], "-")))
+            .save_file()
+        else {
+            return Ok(None);
+        };
+        core::atomic_save(
+            &path,
+            &serde_json::to_vec_pretty(&profile).map_err(err)?,
+            true,
+        )
+        .map_err(err)?;
+        Ok(Some(path.to_string_lossy().into_owned()))
+    })
+    .await
+    .map_err(err)?
+}
+#[tauri::command]
 fn save_settings(state: State<'_, AppState>, settings: Settings) -> Result<(), String> {
     let runtime = state.data.runtime.lock().map_err(err)?;
     if runtime.busy {
@@ -1150,6 +1211,8 @@ pub fn run() {
             save_profile,
             delete_profile,
             reset_profile,
+            import_profile,
+            export_profile,
             archive_completed,
             save_edit,
             export_job,

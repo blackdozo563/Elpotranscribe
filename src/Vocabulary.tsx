@@ -1,0 +1,369 @@
+import { useEffect, useState, type MutableRefObject } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import type { VocabularyProfile } from "./domain";
+export const cleanTerms = (text: string) => {
+  const seen = new Set<string>();
+  return text
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter(
+      (s) =>
+        s &&
+        !seen.has(s.toLocaleLowerCase()) &&
+        !!seen.add(s.toLocaleLowerCase()),
+    );
+};
+export const profilePrompt = (p: VocabularyProfile) =>
+  [p.whisper_prompt.trim(), cleanTerms(p.terms.join("\n")).join(", ")]
+    .filter(Boolean)
+    .join("\n");
+type Action = (
+  command: string,
+  args?: Record<string, unknown>,
+) => Promise<unknown>;
+export default function Vocabulary({
+  profiles,
+  action,
+  guard,
+}: {
+  profiles: VocabularyProfile[];
+  action: Action;
+  guard: MutableRefObject<(() => Promise<boolean>) | null>;
+}) {
+  const [draft, setDraft] = useState<VocabularyProfile | null>(
+    profiles[0] ?? null,
+  );
+  const [original, setOriginal] = useState<VocabularyProfile | null>(
+    profiles[0] ?? null,
+  );
+  const [termsText, setTermsText] = useState(
+    profiles[0]?.terms.join("\n") ?? "",
+  );
+  const [quick, setQuick] = useState("");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const terms = cleanTerms(termsText);
+  const edited = draft ? { ...draft, terms } : null;
+  const dirty =
+    !!edited &&
+    (!edited.id || JSON.stringify(edited) !== JSON.stringify(original));
+  const load = (profile: VocabularyProfile | null) => {
+    setDraft(profile);
+    setOriginal(profile);
+    setTermsText(profile?.terms.join("\n") ?? "");
+    setQuick("");
+    setError("");
+  };
+  useEffect(() => {
+    if (!draft && profiles.length) load(profiles[0]);
+  }, [profiles, draft]);
+  useEffect(() => {
+    const mayLeave = async () =>
+      !dirty ||
+      (await action("confirm_action", {
+        message: "Quitter le profil sans enregistrer les modifications ?",
+      })) === true;
+    guard.current = mayLeave;
+    const before = (e: BeforeUnloadEvent) => {
+      if (dirty) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", before);
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    if ("__TAURI_INTERNALS__" in window)
+      void getCurrentWindow()
+        .onCloseRequested(async (e) => {
+          if (dirty) {
+            e.preventDefault();
+            if (await mayLeave()) await getCurrentWindow().destroy();
+          }
+        })
+        .then((fn) => {
+          if (disposed) fn();
+          else unlisten = fn;
+        })
+        .catch((e) => setError(String(e)));
+    return () => {
+      guard.current = null;
+      window.removeEventListener("beforeunload", before);
+      disposed = true;
+      unlisten?.();
+    };
+  }, [dirty, guard, action]);
+  const attempt = async (work: () => Promise<void>) => {
+    setSaving(true);
+    setError("");
+    try {
+      await work();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+  const choose = (profile: VocabularyProfile) => {
+    void attempt(async () => {
+      if ((await guard.current?.()) !== false) load(profile);
+    });
+  };
+  const add = () => {
+    const value = quick.trim();
+    if (value) {
+      setTermsText(cleanTerms(termsText + "\n" + value).join("\n"));
+      setQuick("");
+    }
+  };
+  const promptBytes = edited
+    ? new TextEncoder().encode(profilePrompt(edited)).length
+    : 0;
+  return (
+    <>
+      <div className="heading">
+        <div>
+          <div className="eyebrow">VOS MOTS, VOS DOMAINES</div>
+          <h1>Vocabulaire</h1>
+          <p>
+            Profils enregistrés uniquement sur ce Mac. Aucun remplacement
+            automatique.
+          </p>
+        </div>
+      </div>
+      {error && (
+        <div className="alert" role="alert">
+          {error}
+        </div>
+      )}
+      <div className="vocabulary-layout">
+        <aside
+          className="panel profile-list"
+          aria-label="Profils de vocabulaire"
+        >
+          {profiles.map((p) => (
+            <button
+              key={p.id}
+              className={
+                draft?.id === p.id ? "profile-item active" : "profile-item"
+              }
+              onClick={() => choose(p)}
+            >
+              <strong>{p.name}</strong>
+              <span>
+                {p.language.toUpperCase()} · {p.terms.length} termes
+                {p.builtin ? " · Fourni" : ""}
+              </span>
+            </button>
+          ))}
+          <div className="button-row">
+            <button
+              disabled={saving}
+              onClick={() =>
+                choose({
+                  id: "",
+                  name: "Nouveau profil",
+                  language: "fr",
+                  terms: [],
+                  whisper_prompt: "",
+                  builtin: false,
+                })
+              }
+            >
+              Nouveau profil
+            </button>
+            <button
+              disabled={!edited || saving}
+              onClick={() =>
+                edited &&
+                choose({
+                  ...edited,
+                  id: "",
+                  name: `${edited.name} — copie`,
+                  builtin: false,
+                })
+              }
+            >
+              Dupliquer
+            </button>
+            <button
+              disabled={!draft?.id || draft.builtin || saving}
+              onClick={() =>
+                void attempt(async () => {
+                  if (
+                    (await action("confirm_action", {
+                      message: `Supprimer le profil « ${draft!.name} » ?`,
+                    })) !== true
+                  )
+                    return;
+                  await action("delete_profile", { id: draft!.id });
+                  load(profiles.find((p) => p.id !== draft!.id) ?? null);
+                })
+              }
+            >
+              Supprimer
+            </button>
+            {draft?.builtin && (
+              <button
+                disabled={saving}
+                onClick={() =>
+                  void attempt(async () => {
+                    if (
+                      (await action("confirm_action", {
+                        message:
+                          "Réinitialiser ce profil avec les termes et l’invite fournis ?",
+                      })) === true
+                    )
+                      load(
+                        (await action("reset_profile", {
+                          id: draft.id,
+                        })) as VocabularyProfile,
+                      );
+                  })
+                }
+              >
+                Réinitialiser
+              </button>
+            )}
+            <button
+              disabled={saving}
+              onClick={() =>
+                void attempt(async () => {
+                  if ((await guard.current?.()) === false) return;
+                  const p = await action("import_profile");
+                  if (p) load(p as VocabularyProfile);
+                })
+              }
+            >
+              Importer .json
+            </button>
+            <button
+              disabled={!draft?.id || dirty || saving}
+              onClick={() =>
+                void attempt(async () => {
+                  await action("export_profile", { id: draft!.id });
+                })
+              }
+            >
+              Exporter .json
+            </button>
+          </div>
+        </aside>
+        {draft && (
+          <section
+            className="panel profile-detail"
+            aria-label="Éditer le profil"
+          >
+            <label>
+              Nom du profil
+              <input
+                aria-label="Nom du profil"
+                value={draft.name}
+                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+              />
+            </label>
+            <label>
+              Langue du profil
+              <select
+                aria-label="Langue du profil"
+                value={draft.language}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    language: e.target.value as "fr" | "en",
+                  })
+                }
+              >
+                <option value="fr">Français</option>
+                <option value="en">Anglais</option>
+              </select>
+            </label>
+            <label>
+              Termes du profil
+              <textarea
+                rows={10}
+                aria-label="Termes du profil"
+                value={termsText}
+                onChange={(e) => setTermsText(e.target.value)}
+                spellCheck={false}
+              />
+            </label>
+            <small role="status">
+              {terms.length} termes · Une entrée par ligne ; doublons et lignes
+              vides ignorés.
+            </small>
+            <div className="button-row">
+              <input
+                aria-label="Ajouter un terme"
+                value={quick}
+                onChange={(e) => setQuick(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    add();
+                  }
+                }}
+              />
+              <button onClick={add}>+ Ajouter</button>
+            </div>
+            <label>
+              Invite Whisper
+              <textarea
+                rows={4}
+                aria-label="Invite Whisper"
+                value={draft.whisper_prompt}
+                onChange={(e) =>
+                  setDraft({ ...draft, whisper_prompt: e.target.value })
+                }
+              />
+            </label>
+            <p>
+              Cette invite et les termes sont transmis à Whisper avant
+              transcription pour orienter l’orthographe. Ultra utilise les
+              termes uniquement pour la relecture.
+            </p>
+            <small>
+              ≤ {promptBytes} tokens (borne UTF-8 prudente) · limite d’invite :
+              224 tokens. Le moteur applique la limite avec son vrai tokenizer.
+            </small>
+            {promptBytes > 224 && (
+              <p className="alert" role="status">
+                L’invite et les termes peuvent dépasser la limite. Whisper les
+                tronquera à une frontière de token ; privilégiez les termes
+                importants au début.
+              </p>
+            )}
+            <div className="button-row">
+              <button
+                className="primary"
+                disabled={saving || !draft.name.trim()}
+                onClick={() =>
+                  void attempt(async () =>
+                    load(
+                      (await action("save_profile", {
+                        profile: edited,
+                      })) as VocabularyProfile,
+                    ),
+                  )
+                }
+              >
+                Enregistrer
+              </button>
+              <button
+                disabled={saving || !dirty}
+                onClick={() =>
+                  load(original?.id ? original : (profiles[0] ?? null))
+                }
+              >
+                Annuler
+              </button>
+              <span>
+                {dirty ? "Modifications non enregistrées" : "Profil enregistré"}
+              </span>
+            </div>
+          </section>
+        )}
+      </div>
+    </>
+  );
+}

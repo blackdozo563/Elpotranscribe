@@ -1041,3 +1041,55 @@ input[type="checkbox"] {
 .search-panel input[type="checkbox"] {
   width: auto;
 }
+
+.vocabulary-layout {
+  display: grid;
+  grid-template-columns: minmax(230px, 30%) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.profile-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.profile-item {
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  white-space: normal;
+}
+.profile-item.active {
+  border-color: var(--purple, #ab8af5);
+  background: #30283f;
+}
+.profile-item span {
+  color: #b5a8ce;
+  font-size: 12px;
+}
+.profile-list .button-row {
+  flex-wrap: wrap;
+}
+.profile-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.profile-detail label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.profile-detail textarea {
+  width: 100%;
+  resize: vertical;
+}
+.profile-detail .button-row {
+  flex-wrap: wrap;
+}
+@media (max-width: 1050px) {
+  .vocabulary-layout {
+    grid-template-columns: 1fr;
+  }
+}
