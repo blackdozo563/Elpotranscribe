@@ -94,13 +94,17 @@ with tempfile.TemporaryDirectory(prefix='elpo-smoke-') as temporary:
     subprocess.run(['/usr/bin/say','-v',voice,'-o',str(spoken),'-f',str(script)],check=True)
     french_audio=temp/'Français.long.mp3'
     subprocess.run(['ffmpeg','-hide_banner','-loglevel','error','-nostdin','-y','-stream_loop','-1','-i',str(spoken),'-t','1200','-ar','44100','-ac','2','-c:a','libmp3lame','-b:a','128k',str(french_audio)],check=True)
-    result=call({'action':'transcribe','models':str(models),'source':str(french_audio),'language':'fr','engine':'whisper-turbo'})
+    # Exercise raw passage output on a short MP3; the native default-engine
+    # queue below transcribes all 20 minutes once, without duplicating that cost.
+    excerpt=temp/'Français.extrait.mp3'
+    subprocess.run(['ffmpeg','-hide_banner','-loglevel','error','-nostdin','-y','-i',str(french_audio),'-t','30','-c:a','copy',str(excerpt)],check=True)
+    result=call({'action':'transcribe','models':str(models),'source':str(excerpt),'language':'fr','engine':'whisper-turbo'})
     units=result['segments'] if result.get('timingGranularity')=='segment' else result['words']
-    assert 1199000 <= result['durationMs'] <= 1201000
-    assert units and units[-1]['endMs'] >= 19*60000, 'Long French MP3 truncated'
+    assert 29000 <= result['durationMs'] <= 31000
+    assert units and units[-1]['endMs'] >= 25000, 'French MP3 excerpt truncated'
     assert all(word in result['text'].lower() for word in ['bonjour','soir']), result['text'][:1500]
-    output=root/'target/smoke-whisper-turbo-fr-long.json';output.write_text(json.dumps(result,ensure_ascii=False))
-    subprocess.run(['cargo','run','--locked','-p','elpo-core','--example','validate_transcript','--',str(output),str(root/'target/smoke-whisper-turbo-fr-long.srt')],cwd=root,check=True)
+    output=root/'target/smoke-whisper-turbo-fr-excerpt.json';output.write_text(json.dumps(result,ensure_ascii=False))
+    subprocess.run(['cargo','run','--locked','-p','elpo-core','--example','validate_transcript','--',str(output),str(root/'target/smoke-whisper-turbo-fr-excerpt.srt')],cwd=root,check=True)
     # Export the actual passage boundaries too, independently of token quality.
     passages={**result,'timingGranularity':'segment','words':[]}
     output=root/'target/smoke-whisper-turbo-fr-passages.json';output.write_text(json.dumps(passages,ensure_ascii=False))
@@ -110,4 +114,4 @@ with tempfile.TemporaryDirectory(prefix='elpo-smoke-') as temporary:
     if checked.returncode or not re.search(r'test result: ok\. [1-9]\d* passed',checked.stdout):
         raise RuntimeError('French MP3 queue/removal failed: '+(checked.stderr+'\n'+checked.stdout)[-5000:])
     print(checked.stdout)
-    print('::notice title=French MP3 regression::20 minutes, stereo 44.1 kHz, Turbo, '+result.get('timingGranularity','word')+' timing, SRT, default-engine queue and persisted removal passed. Synthesized speech, not an accuracy benchmark.',flush=True)
+    print('::notice title=French MP3 regression::20 minutes, stereo 44.1 kHz, Turbo, SRT, default-engine queue and persisted removal passed. Synthesized speech, not an accuracy benchmark.',flush=True)
