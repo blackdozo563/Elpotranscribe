@@ -4,6 +4,7 @@ export interface Cue {
   text: string;
 }
 export interface Settings {
+  engine: string;
   language: string;
   autoSave: boolean;
   subtitles: { lineLength: number; maxLines: number; maxDurationMs: number };
@@ -30,6 +31,7 @@ export interface Snapshot {
   settings: Settings;
   busy: boolean;
   modelInstalled: boolean;
+  installedModels: string[];
   platform: string;
 }
 export function validate(cues: Cue[]) {

@@ -5,6 +5,7 @@ if [[ "$(uname -s)" != Darwin || "$(uname -m)" != arm64 ]]; then
   echo 'La compilation native nécessite macOS Apple Silicon et Xcode 26 (Swift 6.2+).' >&2
   exit 1
 fi
+bash scripts/build-whisper.sh
 swift build --package-path native/swift --configuration release --arch arm64
 mkdir -p src-tauri/binaries
 cp native/swift/.build/arm64-apple-macosx/release/elpo-asr src-tauri/binaries/elpo-asr-aarch64-apple-darwin

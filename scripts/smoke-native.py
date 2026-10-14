@@ -44,3 +44,28 @@ with tempfile.TemporaryDirectory(prefix='elpo-smoke-') as temporary:
         raise RuntimeError('Native queue integration failed: '+(queued.stderr+'\n'+queued.stdout)[-5000:])
     print(queued.stdout)
     print('Real Parakeet Ultra inference, native queue, per-folder SRT and error recovery passed:',len(result['words']),'timestamped words')
+    for engine in ['whisper-base','whisper-small']:
+        call({'action':'install','models':str(models),'engine':engine})
+        result=call({'action':'transcribe','models':str(models),'source':str(audio),'language':'en','engine':engine})
+        assert result['engine']==engine
+        assert result['words'] and all(w['endMs']>w['startMs']>=0 for w in result['words'])
+        assert all(word in result['text'].lower() for word in ['country','ask','you']), result['text']
+        result['measurement']['realTimeFactor']=result['measurement']['wallSeconds']/(result['durationMs']/1000)
+        output=root/f'target/smoke-{engine}.json'; output.write_text(json.dumps(result,ensure_ascii=False))
+        subprocess.run(['cargo','run','--locked','-p','elpo-core','--example','validate_transcript','--',str(output),str(root/f'target/smoke-{engine}.srt')],cwd=root,check=True)
+        test_env['ELPO_TEST_ENGINE']=engine
+        queued=subprocess.run(['cargo','test','--locked','--release','-p','elpotranscribe','--target','aarch64-apple-darwin','--','--ignored','--nocapture'],cwd=root,env=test_env,text=True,capture_output=True)
+        if queued.returncode or not re.search(r'test result: ok\. [1-9]\d* passed',queued.stdout):
+            raise RuntimeError(engine+' native queue integration failed: '+(queued.stderr+'\n'+queued.stdout)[-5000:])
+        print(queued.stdout)
+        # Corrupt model bytes must be rejected before inference, then restore.
+        weights=models/engine/'model.bin'
+        with weights.open('r+b') as file:
+            original=file.read(1);file.seek(0);file.write(bytes([original[0]^255]))
+        try:
+            try: call({'action':'transcribe','models':str(models),'source':str(audio),'language':'en','engine':engine})
+            except RuntimeError as error: assert 'Intégrité Whisper' in str(error), str(error)
+            else: raise AssertionError('Corrupted Whisper model was accepted')
+        finally:
+            with weights.open('r+b') as file: file.write(original)
+        print('Real packaged inference, queue, cancellation and integrity passed:',engine,flush=True)

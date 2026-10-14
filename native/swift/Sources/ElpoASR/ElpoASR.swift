@@ -3,7 +3,7 @@ import AVFoundation
 import CryptoKit
 import FluidAudio
 
-struct Request: Decodable { let action: String; let models: String?; let source: String?; let language: String? }
+struct Request: Decodable { let action: String; let models: String?; let source: String?; let language: String?; let engine: String? }
 struct Word: Codable { let startMs: UInt64; let endMs: UInt64; let text: String }
 struct Failure: LocalizedError { let message: String; var errorDescription: String? { message } }
 struct Manifest: Codable { let sdk: String; let files: [String: String] }
@@ -58,6 +58,16 @@ func probe(_ path: String) throws -> UInt64 {
             }
             guard let path = request.models else { throw Failure(message: "Dossier du modèle absent") }
             let root = URL(fileURLWithPath: path, isDirectory: true)
+            let engine = request.engine ?? "ultra"
+            if engine.hasPrefix("whisper-") {
+                if request.action == "install" {
+                    try await installWhisper(root: root, engine: engine)
+                    emit(["installed": true, "engine": engine]); return
+                }
+                guard request.action == "transcribe", let source = request.source else { throw Failure(message: "Commande Whisper inconnue") }
+                try transcribeWhisper(root: root, engine: engine, source: source, language: request.language); return
+            }
+            guard engine == "ultra" else { throw Failure(message: "Moteur inconnu") }
             let directory = root.appendingPathComponent(Repo.parakeetUltra.folderName, isDirectory: true)
             let marker = root.appendingPathComponent("verified.json")
             if request.action == "install" {

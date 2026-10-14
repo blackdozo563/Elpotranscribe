@@ -57,14 +57,27 @@ jobs:
             target
             native/swift/.build
           key: macos-arm64-${{ hashFiles('Cargo.lock', 'native/swift/Package.swift') }}-${{ github.run_id }}
-          restore-keys: macos-arm64-${{ hashFiles('Cargo.lock', 'native/swift/Package.swift') }}-
+          restore-keys: |
+            macos-arm64-${{ hashFiles('Cargo.lock', 'native/swift/Package.swift') }}-
+            macos-arm64-
       - run: npm ci
-      - run: npm run native:build
+      - name: Build native engines
+        run: |
+          mkdir -p target
+          set +e
+          set -o pipefail
+          npm run native:build 2>&1 | tee target/native-build.log
+          result=$?
+          if [ "$result" -ne 0 ]; then python3 scripts/report-build-errors.py target/native-build.log; fi
+          exit "$result"
       - name: Run and verify Swift test execution
         run: |
           set -euo pipefail
           mkdir -p target
-          swift test --package-path native/swift 2>&1 | tee target/swift-tests.log
+          if ! swift test --package-path native/swift 2>&1 | tee target/swift-tests.log; then
+            python3 scripts/report-build-errors.py target/swift-tests.log
+            exit 1
+          fi
           python3 scripts/verify-swift-tests.py target/swift-tests.log
       - run: cargo test -p elpo-core --locked
       - run: npm run check && npm test
@@ -90,11 +103,11 @@ jobs:
           image="$(find target/aarch64-apple-darwin/release/bundle/dmg -name '*.dmg' -print -quit)"
           test -n "$image"
           bash scripts/validate-dmg.sh "$image"
-          cp "$image" release/ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.0.0.dmg
+          cp "$image" release/ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.1.0.dmg
           shasum -a 256 release/*.dmg > release/SHA256SUMS.txt
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.0.0
+          name: ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.1.0
           path: release/*
           if-no-files-found: error
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -104,6 +117,8 @@ jobs:
           path: |
             target/smoke-result.json
             target/smoke-result.srt
+            target/smoke-whisper-*.json
+            target/smoke-whisper-*.srt
           if-no-files-found: ignore
       - uses: actions/cache/save@v4
         if: always()
@@ -121,11 +136,11 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.0.0
+          name: ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.1.0
           path: release
       - name: Publish validated personal-use build
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          gh release create v1.0.0 release/* --target "$GITHUB_SHA" --title 'ELPOTRANSCRIBE v1.0.0 — validation macOS' --prerelease --notes 'Build Apple Silicon signé ad hoc, non notarié. Parakeet Ultra et export SRT vérifiés par la CI ; performances M1/M2 8 Go à mesurer. Voir les limites dans le README.'
+          gh release create v1.1.0 release/* --target "$GITHUB_SHA" --title 'ELPOTRANSCRIBE v1.1.0 — validation macOS' --prerelease --notes 'Build Apple Silicon signé ad hoc, non notarié. Parakeet Ultra, Whisper Base/Small et export SRT vérifiés par la CI ; performances M1/M2 8 Go à mesurer. Voir les limites dans le README.'

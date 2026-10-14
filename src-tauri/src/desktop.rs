@@ -32,6 +32,8 @@ struct Job {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Settings {
+    #[serde(default = "default_engine")]
+    engine: String,
     language: String,
     auto_save: bool,
     subtitles: SubtitleSettings,
@@ -40,6 +42,7 @@ struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            engine: default_engine(),
             language: "fr".into(),
             auto_save: false,
             subtitles: SubtitleSettings::default(),
@@ -59,6 +62,7 @@ struct Snapshot {
     settings: Settings,
     busy: bool,
     model_installed: bool,
+    installed_models: Vec<String>,
     platform: String,
 }
 #[derive(Default)]
@@ -101,6 +105,16 @@ impl AppState {
     }
     fn models(&self) -> PathBuf {
         self.data.root.join("models")
+    }
+    fn installed(&self, engine: &str) -> bool {
+        self.model_marker(engine).is_file()
+    }
+    fn model_marker(&self, engine: &str) -> PathBuf {
+        self.models().join(if engine == "ultra" {
+            "verified.json".into()
+        } else {
+            format!("{engine}.json")
+        })
     }
     fn helper(
         &self,
@@ -187,7 +201,12 @@ impl AppState {
             jobs: s.jobs.clone(),
             settings: s.settings.clone(),
             busy,
-            model_installed: self.models().join("verified.json").is_file(),
+            model_installed: self.installed(&s.settings.engine),
+            installed_models: ["ultra", "whisper-base", "whisper-small"]
+                .into_iter()
+                .filter(|e| self.installed(e))
+                .map(str::to_owned)
+                .collect(),
             platform: self.data.platform.clone(),
         })
     }
@@ -244,6 +263,16 @@ impl AppState {
 }
 fn err(e: impl std::fmt::Display) -> String {
     e.to_string()
+}
+fn default_engine() -> String {
+    "ultra".into()
+}
+fn check_engine(engine: &str) -> Result<(), String> {
+    if ["ultra", "whisper-base", "whisper-small"].contains(&engine) {
+        Ok(())
+    } else {
+        Err("Moteur non pris en charge".into())
+    }
 }
 fn now() -> u64 {
     SystemTime::now()
@@ -364,12 +393,17 @@ async fn import_files(
     .map_err(err)?
 }
 #[tauri::command]
-async fn install_model(state: State<'_, AppState>) -> Result<Snapshot, String> {
+async fn install_model(
+    state: State<'_, AppState>,
+    engine: Option<String>,
+) -> Result<Snapshot, String> {
+    let engine = engine.unwrap_or_else(default_engine);
+    check_engine(&engine)?;
     let state = state.inner().clone();
     state.reserve()?;
     tauri::async_runtime::spawn_blocking(move || {
         let result = state.helper(
-            serde_json::json!({"action":"install","models":state.models()}),
+            serde_json::json!({"action":"install","models":state.models(),"engine":engine}),
             None,
         );
         state.release();
@@ -380,10 +414,30 @@ async fn install_model(state: State<'_, AppState>) -> Result<Snapshot, String> {
     .map_err(err)?
 }
 #[tauri::command]
-async fn remove_model(state: State<'_, AppState>) -> Result<Snapshot, String> {
+async fn remove_model(
+    state: State<'_, AppState>,
+    engine: Option<String>,
+) -> Result<Snapshot, String> {
+    let engine = engine.unwrap_or_else(default_engine);
+    check_engine(&engine)?;
     let state = state.inner().clone();
     state.reserve()?;
-    let result = fs::remove_dir_all(state.models()).map_err(err);
+    let result = (|| {
+        let directory = state.models().join(if engine == "ultra" {
+            "parakeet-ultra"
+        } else {
+            &engine
+        });
+        // Remove availability first, including when a partial installation remains.
+        let marker = state.model_marker(&engine);
+        if marker.exists() {
+            fs::remove_file(marker).map_err(err)?;
+        }
+        if directory.exists() {
+            fs::remove_dir_all(directory).map_err(err)?;
+        }
+        Ok::<(), String>(())
+    })();
     state.release();
     result?;
     state.snapshot()
@@ -410,6 +464,7 @@ fn process_queue(state: AppState) {
                 j.status = "transcribing".into();
                 j.error = None;
                 j.language = settings.language.clone();
+                j.engine = settings.engine.clone();
                 let j = j.clone();
                 state.persist(&s)?;
                 Ok(Some((j, settings)))
@@ -422,7 +477,7 @@ fn process_queue(state: AppState) {
             _ => break,
         };
         let result = (|| -> Result<Vec<Cue>, String> {
-            let result=state.helper(serde_json::json!({"action":"transcribe","models":state.models(),"source":job.source,"language":settings.language}),Some(&job.id))?;
+            let result=state.helper(serde_json::json!({"action":"transcribe","models":state.models(),"source":job.source,"language":settings.language,"engine":settings.engine}),Some(&job.id))?;
             let words: Vec<Word> = serde_json::from_value(result["words"].clone()).map_err(err)?;
             core::segment(&words, &settings.subtitles).map_err(err)
         })();
@@ -466,8 +521,16 @@ fn process_queue(state: AppState) {
 }
 #[tauri::command]
 fn start_batch(state: State<'_, AppState>) -> Result<(), String> {
-    if !state.models().join("verified.json").is_file() {
-        return Err("Installez Parakeet Ultra dans Modèles IA".into());
+    let engine = state
+        .data
+        .store
+        .lock()
+        .map_err(err)?
+        .settings
+        .engine
+        .clone();
+    if !state.installed(&engine) {
+        return Err("Installez le moteur choisi dans Modèles IA".into());
     }
     state.reserve()?;
     let state = state.inner().clone();
@@ -521,8 +584,11 @@ fn archive_completed(state: State<'_, AppState>) -> Result<(), String> {
 }
 #[tauri::command]
 fn save_settings(state: State<'_, AppState>, settings: Settings) -> Result<(), String> {
+    check_engine(&settings.engine)?;
     settings.subtitles.validate().map_err(err)?;
-    if !["auto", "fr", "en", "es", "de", "it", "pt"].contains(&settings.language.as_str()) {
+    if !["auto", "fr", "en", "es", "de", "it", "pt", "ar"].contains(&settings.language.as_str())
+        || (settings.engine == "ultra" && settings.language == "ar")
+    {
         return Err("Langue non prise en charge".into());
     }
     if settings.vocabulary.len() > 1000 {
@@ -774,6 +840,7 @@ mod integration_tests {
         };
         let mut settings = Settings::default();
         settings.language = "en".into();
+        settings.engine = std::env::var("ELPO_TEST_ENGINE").unwrap_or_else(|_| default_engine());
         settings.auto_save = true;
         let state = AppState {
             data: Arc::new(Inner {

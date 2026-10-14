@@ -66,8 +66,10 @@ const initial: Snapshot = {
   jobs: [],
   busy: false,
   modelInstalled: false,
+  installedModels: [],
   platform: "macOS 14+ · Apple Silicon",
   settings: {
+    engine: "ultra",
     language: "fr",
     autoSave: false,
     subtitles: { lineLength: 42, maxLines: 2, maxDurationMs: 5000 },
@@ -292,10 +294,16 @@ export default function App() {
                       </span>
                       <section>
                         <small>Moteur local</small>
-                        <strong className="stat-text">Parakeet Ultra</strong>
+                        <strong className="stat-text">
+                          {data.settings.engine === "ultra"
+                            ? "Parakeet Ultra"
+                            : data.settings.engine === "whisper-base"
+                              ? "Whisper Base"
+                              : "Whisper Small"}
+                        </strong>
                         <small>
                           {data.modelInstalled
-                            ? "Installé · Core ML"
+                            ? "Installé · local"
                             : "À installer dans Modèles IA"}
                         </small>
                       </section>
@@ -348,10 +356,29 @@ export default function App() {
                       Mode
                       <select
                         aria-label="Moteur de transcription"
-                        value="ultra"
-                        onChange={() => {}}
+                        value={data.settings.engine}
+                        disabled={data.busy || working}
+                        onChange={(e) =>
+                          run("save_settings", {
+                            settings: {
+                              ...data.settings,
+                              engine: e.target.value,
+                              language:
+                                e.target.value === "ultra" &&
+                                data.settings.language === "ar"
+                                  ? "auto"
+                                  : data.settings.language,
+                            },
+                          })
+                        }
                       >
                         <option value="ultra">Rapide — Parakeet Ultra</option>
+                        <option value="whisper-base">
+                          Secours léger — Whisper Base · Metal
+                        </option>
+                        <option value="whisper-small">
+                          Multilingue — Whisper Small · Metal
+                        </option>
                       </select>
                     </label>
                     <label>
@@ -377,6 +404,9 @@ export default function App() {
                           ["de", "Allemand"],
                           ["it", "Italien"],
                           ["pt", "Portugais"],
+                          ...(data.settings.engine !== "ultra"
+                            ? [["ar", "Arabe"]]
+                            : []),
                         ].map(([v, l]) => (
                           <option key={v} value={v}>
                             {l}
@@ -600,7 +630,7 @@ export default function App() {
                         Taille et mémoire réelles à mesurer sur Mac 8 Go
                       </span>
                       <span>
-                        {data.modelInstalled
+                        {data.installedModels?.includes("ultra")
                           ? "Fichiers installés · intégrité revérifiée avant chaque transcription"
                           : "Téléchargement explicite via HTTPS depuis Hugging Face"}
                       </span>
@@ -616,11 +646,11 @@ export default function App() {
                         ) : (
                           <Download size={16} />
                         )}
-                        {data.modelInstalled
+                        {data.installedModels?.includes("ultra")
                           ? "Vérifier / réinstaller"
                           : "Installer Parakeet Ultra"}
                       </button>
-                      {data.modelInstalled && (
+                      {data.installedModels?.includes("ultra") && (
                         <button
                           disabled={data.busy || working}
                           onClick={() => {
@@ -644,13 +674,72 @@ export default function App() {
                       </p>
                     )}
                   </section>
+                  {[
+                    {
+                      id: "whisper-base",
+                      name: "Whisper Base",
+                      size: "142 Mio",
+                      description: "Modèle léger de secours.",
+                    },
+                    {
+                      id: "whisper-small",
+                      name: "Whisper Small",
+                      size: "466 Mio",
+                      description: "Modèle multilingue plus précis, plus lent.",
+                    },
+                  ].map((model) => (
+                    <section className="panel model-card" key={model.id}>
+                      <h2>{model.name}</h2>
+                      <p>whisper.cpp 1.8.3 · Metal · {model.size}</p>
+                      <p>
+                        {model.description} Français, anglais et arabe.
+                        Traitement local et horodatages calculés par
+                        whisper.cpp.
+                      </p>
+                      <p>
+                        {data.installedModels?.includes(model.id)
+                          ? "Installé · intégrité revérifiée avant chaque transcription"
+                          : "Téléchargement explicite depuis Hugging Face"}
+                      </p>
+                      <div className="button-row">
+                        <button
+                          className="primary"
+                          disabled={data.busy || working}
+                          onClick={() =>
+                            run("install_model", { engine: model.id })
+                          }
+                        >
+                          <Download size={16} />
+                          {data.installedModels?.includes(model.id)
+                            ? `Réinstaller ${model.name}`
+                            : `Installer ${model.name}`}
+                        </button>
+                        {data.installedModels?.includes(model.id) && (
+                          <button
+                            disabled={data.busy || working}
+                            onClick={() => {
+                              if (
+                                window.confirm(
+                                  `Supprimer ${model.name} du Mac ?`,
+                                )
+                              )
+                                run("remove_model", { engine: model.id });
+                            }}
+                          >
+                            <Trash2 size={16} />
+                            Supprimer
+                          </button>
+                        )}
+                      </div>
+                    </section>
+                  ))}
                   <div className="panel info-panel">
                     <h3>Intégrations avancées en attente</h3>
                     <p>
-                      Qwen3-ASR 0.6B / 1.7B, whisper.cpp et Gemini ne sont pas
-                      implémentés dans cette version de développement. Ils ne
-                      sont pas sélectionnables. Les validations sur M1 et M2 8
-                      Go restent nécessaires.
+                      Qwen3-ASR 0.6B / 1.7B et Gemini ne sont pas implémentés
+                      dans cette version de développement. Ils ne sont pas
+                      sélectionnables. Les validations sur M1 et M2 8 Go restent
+                      nécessaires.
                     </p>
                   </div>
                 </>

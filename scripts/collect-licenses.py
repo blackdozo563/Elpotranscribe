@@ -19,5 +19,6 @@ for name,path,license in sorted(entries):
     notices=[p for p in path.iterdir() if p.is_file() and p.name.upper().startswith(('LICENSE','LICENCE','COPYING','NOTICE'))]
     for notice in sorted(notices):parts.append('\n'+notice.name+'\n'+notice.read_text(errors='replace')+'\n')
 parts.append('\nFluidAudio SDK pinned to 224de0fb3c304b41bbae24e85e1801900865ff3e\n'+(root/'third-party/FluidAudio-LICENSE.txt').read_text())
+parts.append('\nwhisper.cpp 1.8.3 pinned to 2eeeba56e9edd762b4b38467bab96c2517163158\n'+(root/'third-party/whisper.cpp-LICENSE.txt').read_text())
 output=root/'src-tauri/resources/THIRD_PARTY_NOTICES.txt';output.parent.mkdir(parents=True,exist_ok=True);output.write_text(''.join(parts))
 print('Collected notices for',len(entries),'resolved Rust/npm packages plus FluidAudio')

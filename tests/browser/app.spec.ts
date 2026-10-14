@@ -24,7 +24,7 @@ test("modèles non intégrés jamais proposés comme disponibles", async ({
     page.getByRole("heading", { name: "Parakeet Ultra", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByText("Qwen3-ASR 0.6B / 1.7B, whisper.cpp et Gemini", {
+    page.getByText("Qwen3-ASR 0.6B / 1.7B et Gemini", {
       exact: false,
     }),
   ).toBeVisible();
@@ -59,8 +59,10 @@ test("éditeur : modification, annulation et export par le pont natif simulé", 
       jobs: [job],
       busy: false,
       modelInstalled: true,
+      installedModels: ["ultra"],
       platform: "Simulation UI",
       settings: {
+        engine: "ultra",
         language: "fr",
         autoSave: false,
         subtitles: { lineLength: 42, maxLines: 2, maxDurationMs: 5000 },
