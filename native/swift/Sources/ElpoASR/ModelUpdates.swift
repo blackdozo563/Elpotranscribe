@@ -82,7 +82,7 @@ func checkModelUpdates(root: URL) async throws -> [ModelUpdate] {
     }
 }
 func installedDirectory(root: URL, engine: String, manifest: Manifest) throws -> URL {
-    let folder = engine == "ultra" ? "parakeet-ultra" : engine
+    let folder = engine == "ultra" ? "parakeet-ultra-coreml" : engine
     guard let relative = manifest.directory else { return root.appendingPathComponent(folder) }
     let parts = relative.split(separator: "/", omittingEmptySubsequences: false)
     guard parts.count == 2, parts[0].hasPrefix("installed-" + engine + "-"), !parts[0].contains(".."), parts[1] == folder else { throw Failure(message: "Chemin du modèle installé invalide") }
@@ -93,7 +93,7 @@ func activateModel(prepared: URL, root: URL, engine: String, manifest: Manifest)
     let marker = modelMarker(root: root, engine: engine)
     let previous = (try? Data(contentsOf: marker)).flatMap { try? JSONDecoder().decode(Manifest.self, from: $0) }
     let container = "installed-" + engine + "-" + UUID().uuidString
-    let folder = engine == "ultra" ? "parakeet-ultra" : engine
+    let folder = engine == "ultra" ? "parakeet-ultra-coreml" : engine
     let destination = root.appendingPathComponent(container).appendingPathComponent(folder)
     try manager.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
     var committed = manifest; committed.directory = container + "/" + folder
