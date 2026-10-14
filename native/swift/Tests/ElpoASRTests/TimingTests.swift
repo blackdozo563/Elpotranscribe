@@ -82,13 +82,13 @@ final class WhisperFallbackTests: XCTestCase {
         output.appendSegment(Data(" bonjour".utf8), start: 100, end: 900)
         XCTAssertEqual(try output.result().granularity, "segment")
     }
-    func testCompleteWordsStillUseWordTimes() throws {
+    func testSegmentsArePrimaryEvenWithCompleteWords() throws {
         let output = WhisperOutput()
         output.tokens.append(Data(" Bonjour".utf8), start: 120, end: 800)
         output.appendSegment(Data(" Bonjour".utf8), start: 100, end: 900)
         let result = try output.result()
-        XCTAssertEqual(result.granularity, "word")
-        XCTAssertEqual(result.units.first?.startMs, 120)
+        XCTAssertEqual(result.granularity, "segment")
+        XCTAssertEqual(result.units.first?.startMs, 100)
     }
     func testZeroDurationBoundaryKeepsTextAndRecognizedOuterBounds() throws {
         let output = WhisperOutput()
@@ -112,18 +112,29 @@ final class WhisperFallbackTests: XCTestCase {
         XCTAssertEqual(result.units[0].startMs, 100)
         XCTAssertEqual(result.units[0].endMs, 1500)
     }
-    func testReversedSegmentStillFailsWithDiagnosticBounds() {
+    func testInvertedSegmentMergesWithPreviousRealBounds() throws {
         let output = WhisperOutput()
-        output.appendSegment(Data("texte".utf8), start: 900, end: 100)
-        XCTAssertThrowsError(try output.result()) { error in
-            XCTAssertTrue(error.localizedDescription.contains("début=900, fin=100"))
-        }
+        output.appendSegment(Data("Bonjour".utf8), start: 100, end: 500)
+        output.appendSegment(Data("ce soir".utf8), start: 900, end: 600)
+        let result = try output.result()
+        XCTAssertEqual(result.units.count, 1)
+        XCTAssertEqual(result.units[0].text, "Bonjour ce soir")
+        XCTAssertEqual(result.units[0].startMs, 100)
+        XCTAssertEqual(result.units[0].endMs, 900)
     }
-    func testNeitherInvalidNorEmptyPassagesAcquireArtificialTimes() {
+    func testSingleSegmentNeedsNoWordTimes() throws {
         let output = WhisperOutput()
-        output.tokens.append(Data(" soir".utf8), start: 120, end: 120)
-        output.appendSegment(Data(" soir".utf8), start: 0, end: 0)
-        XCTAssertThrowsError(try output.result())
+        output.appendSegment(Data("Bonjour".utf8), start: 120, end: 900)
+        XCTAssertEqual(try output.result().units[0].text, "Bonjour")
+    }
+    func testPointOnlyTextIsRetainedWithoutInventedDuration() throws {
+        let output = WhisperOutput()
+        output.appendSegment(Data("soir".utf8), start: 120, end: 120)
+        let result = try output.result()
+        XCTAssertEqual(result.units[0].startMs, 120)
+        XCTAssertEqual(result.units[0].endMs, 120)
+    }
+    func testEmptyOutputFails() {
         XCTAssertThrowsError(try WhisperOutput().result())
     }
 }

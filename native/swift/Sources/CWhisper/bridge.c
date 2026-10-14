@@ -23,7 +23,11 @@ int elpo_whisper(const char *model, const char *language, const float *audio,
     p.language = language;
     p.detect_language = false;
     p.translate = false;
+    // Required by whisper.cpp's word-boundary segment wrapping, but no token
+    // timing is required by our SRT decoder. Real segment bounds are primary.
     p.token_timestamps = true;
+    p.max_len = 84;
+    p.split_on_word = true;
     p.print_progress = p.print_realtime = p.print_timestamps = p.print_special = false;
     int status = whisper_full(ctx, p, audio, count);
     if (status == 0) {

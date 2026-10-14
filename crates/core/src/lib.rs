@@ -63,13 +63,17 @@ impl SubtitleSettings {
     }
 }
 pub fn validate(cues: &[Cue]) -> Result<()> {
+    validate_passages(cues, false)
+}
+pub(crate) fn validate_passages(cues: &[Cue], allow_point: bool) -> Result<()> {
     if cues.is_empty() {
         return Err(Error::Invalid("Aucun sous-titre à exporter".into()));
     }
     let mut previous = 0;
     for c in cues {
         if c.start_ms < previous
-            || c.end_ms <= c.start_ms
+            || c.end_ms < c.start_ms
+            || (!allow_point && c.end_ms == c.start_ms)
             || c.end_ms > 359_999_999
             || c.text.trim().is_empty()
             || c.text.contains('\0')

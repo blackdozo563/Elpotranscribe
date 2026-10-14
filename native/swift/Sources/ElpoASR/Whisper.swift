@@ -69,44 +69,44 @@ final class WhisperTokens {
 final class WhisperOutput {
     let tokens = WhisperTokens()
     var segments: [Word] = []
-    var invalidSegments = false
-    var invalidSegmentBounds: String?
+    var needsNext = false
     func appendSegment(_ data: Data, start: Int64, end: Int64) {
-        guard let decoded = String(data: data, encoding: .utf8) else { invalidSegments = true; return }
+        guard let decoded = String(data: data, encoding: .utf8) else { return }
         let text = decoded.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        guard start >= 0, end >= start else {
-            invalidSegments = true
-            invalidSegmentBounds = "début=\(start), fin=\(end)"
+        // Keep only model-provided nonnegative bounds. An inverted interval
+        // contributes its real outer endpoints, never interpolated word times.
+        let points = [start, end].filter { $0 >= 0 }
+        guard let low = points.min(), let high = points.max() else {
+            // Retain text with a neighbouring passage when neither bound exists.
+            if let previous = segments.last {
+                segments[segments.count - 1] = Word(startMs: previous.startMs, endMs: previous.endMs, text: previous.text + " " + text)
+            } else {
+                pendingText += (pendingText.isEmpty ? "" : " ") + text
+            }
             return
         }
-        segments.append(Word(startMs: UInt64(start), endMs: UInt64(end), text: text))
+        let invalid = end <= start
+        let segment = Word(startMs: UInt64(low), endMs: UInt64(high), text: (pendingText.isEmpty ? "" : pendingText + " ") + text)
+        pendingText = ""
+        if let previous = segments.last,
+           needsNext || invalid || previous.endMs > segment.startMs {
+            segments[segments.count - 1] = Word(startMs: min(previous.startMs, segment.startMs), endMs: max(previous.endMs, segment.endMs), text: previous.text + " " + segment.text)
+            needsNext = segments.last!.endMs == segments.last!.startMs
+        } else {
+            segments.append(segment)
+            needsNext = invalid
+        }
     }
+    var pendingText = ""
     func result() throws -> (units: [Word], granularity: String) {
         tokens.flush()
-        // Whisper can emit a text-bearing segment with equal start/end at a
-        // decoding boundary. Keep its text by joining adjacent passages using
-        // only their recognized outer bounds. Never assign word timestamps.
-        var grouped: [Word] = []
-        for segment in segments {
-            if let previous = grouped.last,
-               previous.endMs > segment.startMs || previous.endMs == previous.startMs || segment.endMs == segment.startMs {
-                grouped[grouped.count - 1] = Word(
-                    startMs: min(previous.startMs, segment.startMs),
-                    endMs: max(previous.endMs, segment.endMs),
-                    text: previous.text + " " + segment.text)
-            } else {
-                grouped.append(segment)
-            }
-        }
-        segments = grouped
+        // Passages are the primary SRT source. Tokens are optional enrichment.
+        if !segments.isEmpty { return (segments, "segment") }
         if !tokens.invalid, !tokens.words.isEmpty { return (tokens.words, "word") }
-        guard !invalidSegments, !segments.isEmpty, segments.allSatisfy({ $0.endMs > $0.startMs }) else {
-            let detail = invalidSegmentBounds.map { " (\($0))" } ?? ""
-            throw Failure(message: "Whisper n’a fourni ni mots ni passages avec des horodatages valides\(detail). Réessayez avec Parakeet ; aucun temps artificiel n’a été créé.")
-        }
-        return (segments, "segment")
+        throw Failure(message: "Whisper n’a fourni aucun passage. Aucun temps artificiel n’a été créé.")
     }
+
 }
 
 func transcribeWhisper(root: URL, engine: String, source: String, language: String?) throws {
@@ -136,6 +136,10 @@ func transcribeWhisper(root: URL, engine: String, source: String, language: Stri
     }
     guard status == 0 else { throw Failure(message: "Échec whisper.cpp (\(status))") }
     let result = try output.result()
-    let units = try JSONSerialization.jsonObject(with: JSONEncoder().encode(result.units))
-    emit(["engine": engine, "modelVersion": manifest.sources?.map(\.revision).joined(separator: " / ") ?? whisperRevision, "text": result.units.map(\.text).joined(separator: " "), "durationMs": count / 16, "processingTimeMs": try milliseconds(Date().timeIntervalSince(started)), "timingGranularity": result.granularity, "words": result.granularity == "word" ? units : ([[String: Any]]()), "segments": try JSONSerialization.jsonObject(with: JSONEncoder().encode(output.segments))])
+    emit(["engine": engine, "modelVersion": manifest.sources?.map(\.revision).joined(separator: " / ") ?? whisperRevision, "text": result.units.map(\.text).joined(separator: " "), "durationMs": count / 16, "processingTimeMs": try milliseconds(Date().timeIntervalSince(started)), "timingGranularity": result.granularity, "words": tokensJSON(output.tokens), "segments": try JSONSerialization.jsonObject(with: JSONEncoder().encode(output.segments))])
+}
+
+private func tokensJSON(_ tokens: WhisperTokens) -> Any {
+    guard !tokens.invalid else { return [[String: Any]]() }
+    return (try? JSONSerialization.jsonObject(with: JSONEncoder().encode(tokens.words))) ?? [[String: Any]]()
 }
