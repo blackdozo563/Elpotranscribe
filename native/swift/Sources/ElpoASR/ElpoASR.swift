@@ -17,7 +17,8 @@ func hashFile(_ url: URL) throws -> String {
     while let data = try handle.read(upToCount: 1_048_576), !data.isEmpty { hash.update(data: data) }
     return hash.finalize().map { String(format: "%02x", $0) }.joined()
 }
-func modelHashes(_ directory: URL) throws -> [String: String] {
+func modelHashes(_ requestedDirectory: URL) throws -> [String: String] {
+    let directory = requestedDirectory.resolvingSymlinksInPath().standardizedFileURL
     guard let files = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey]) else { throw Failure(message: "Modèle absent") }
     var result: [String: String] = [:]
     for case let file as URL in files {
@@ -72,7 +73,11 @@ func probe(_ path: String) throws -> UInt64 {
             guard request.action == "transcribe", let source = request.source else { throw Failure(message: "Commande inconnue") }
             guard ProcessInfo.processInfo.physicalMemory >= 7_500_000_000 else { throw Failure(message: "Au moins 8 Go de mémoire unifiée sont requis") }
             let manifest = try JSONDecoder().decode(Manifest.self, from: Data(contentsOf: marker))
-            guard manifest.sdk == sdkRevision, manifest.files == (try modelHashes(directory)) else { throw Failure(message: "Intégrité du modèle non vérifiée. Réinstallez-le.") }
+            let actual = try modelHashes(directory)
+            guard manifest.sdk == sdkRevision, manifest.files == actual else {
+                let changed = Set(manifest.files.keys).union(actual.keys).filter { manifest.files[$0] != actual[$0] }.sorted().prefix(10)
+                throw Failure(message: "Intégrité du modèle non vérifiée. Réinstallez-le. Fichiers différents : " + changed.joined(separator: ", "))
+            }
             ModelHub.offlineMode = true
             let models = try await AsrModels.load(from: directory, version: .ultra)
             let manager = AsrManager(); try await manager.loadModels(models)

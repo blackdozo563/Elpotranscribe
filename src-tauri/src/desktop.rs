@@ -66,6 +66,8 @@ struct Runtime {
     busy: bool,
     active: Option<String>,
     child: Option<Child>,
+    temporary: Option<tempfile::TempDir>,
+    shutting_down: bool,
 }
 struct Inner {
     store: Mutex<Store>,
@@ -109,13 +111,21 @@ impl AppState {
         let stderr = tempfile::NamedTempFile::new().map_err(err)?;
         {
             let mut r = self.data.runtime.lock().map_err(err)?;
+            if r.shutting_down {
+                return Err("Application en cours de fermeture".into());
+            }
             if let Some(id) = id {
                 let s = self.data.store.lock().map_err(err)?;
                 if s.jobs.iter().any(|j| j.id == id && j.status == "cancelled") {
                     return Err("Annulé".into());
                 }
             }
+            let temporary = tempfile::Builder::new()
+                .prefix("elpotranscribe-")
+                .tempdir()
+                .map_err(err)?;
             let mut child = Command::new(&self.data.helper)
+                .env("TMPDIR", temporary.path())
                 .stdin(Stdio::piped())
                 .stdout(Stdio::from(out.reopen().map_err(err)?))
                 .stderr(Stdio::from(stderr.reopen().map_err(err)?))
@@ -133,6 +143,7 @@ impl AppState {
             }
             r.active = id.map(str::to_owned);
             r.child = Some(child);
+            r.temporary = Some(temporary);
         }
         let status = loop {
             let status = {
@@ -151,6 +162,7 @@ impl AppState {
         {
             let mut r = self.data.runtime.lock().map_err(err)?;
             r.child.take();
+            r.temporary.take();
             r.active = None;
         }
         let mut text = String::new();
@@ -199,8 +211,24 @@ impl AppState {
         }
         Ok(())
     }
+    fn shutdown(&self) {
+        if let Ok(mut runtime) = self.data.runtime.lock() {
+            runtime.shutting_down = true;
+            if let Some(child) = runtime.child.as_mut() {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+            runtime.child.take();
+            runtime.temporary.take();
+            runtime.active = None;
+            runtime.busy = false;
+        }
+    }
     fn reserve(&self) -> Result<(), String> {
         let mut r = self.data.runtime.lock().map_err(err)?;
+        if r.shutting_down {
+            return Err("Application en cours de fermeture".into());
+        }
         if r.busy {
             return Err("Une opération est déjà en cours".into());
         }
@@ -362,6 +390,15 @@ async fn remove_model(state: State<'_, AppState>) -> Result<Snapshot, String> {
 }
 fn process_queue(state: AppState) {
     loop {
+        if state
+            .data
+            .runtime
+            .lock()
+            .map(|r| r.shutting_down)
+            .unwrap_or(true)
+        {
+            break;
+        }
         let next = (|| -> Result<Option<(Job, Settings)>, String> {
             let mut s = state.data.store.lock().map_err(err)?;
             let settings = s.settings.clone();
@@ -679,8 +716,18 @@ pub fn run() {
             reveal,
             relink
         ])
-        .run(tauri::generate_context!())
-        .expect("Impossible de démarrer ELPOTRANSCRIBE");
+        .build(tauri::generate_context!())
+        .expect("Impossible de démarrer ELPOTRANSCRIBE")
+        .run(|app, event| {
+            if matches!(
+                event,
+                tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit
+            ) {
+                if let Some(state) = app.try_state::<AppState>() {
+                    state.shutdown();
+                }
+            }
+        });
 }
 
 #[cfg(test)]
@@ -797,5 +844,29 @@ mod integration_tests {
         worker.join().unwrap();
         assert_eq!(state.snapshot().unwrap().jobs[0].status, "cancelled");
         assert!(state.data.runtime.lock().unwrap().child.is_none());
+        assert!(state.data.runtime.lock().unwrap().temporary.is_none());
+        let on_exit = make(b.clone());
+        let exit_id = on_exit.id.clone();
+        {
+            state.data.store.lock().unwrap().jobs = vec![on_exit];
+        }
+        state.reserve().unwrap();
+        let exiting = state.clone();
+        let worker = std::thread::spawn(move || process_queue(exiting));
+        let started = std::time::Instant::now();
+        let temporary_path = loop {
+            let runtime = state.data.runtime.lock().unwrap();
+            if runtime.active.as_deref() == Some(exit_id.as_str()) {
+                break runtime.temporary.as_ref().unwrap().path().to_path_buf();
+            }
+            drop(runtime);
+            assert!(started.elapsed() < Duration::from_secs(30));
+            std::thread::sleep(Duration::from_millis(5));
+        };
+        state.shutdown();
+        worker.join().unwrap();
+        assert!(!temporary_path.exists());
+        assert!(state.data.runtime.lock().unwrap().child.is_none());
+        assert!(state.reserve().is_err());
     }
 }

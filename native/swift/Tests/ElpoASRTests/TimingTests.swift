@@ -16,4 +16,15 @@ final class TimingTests: XCTestCase {
         try Data("changed".utf8).write(to: file)
         XCTAssertNotEqual(before, try modelHashes(directory))
     }
+    func testIntegrityThroughParentSymlink() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let real = root.appendingPathComponent("real", isDirectory: true)
+        let alias = root.appendingPathComponent("linked", isDirectory: true)
+        try FileManager.default.createDirectory(at: real, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data("verified model bytes".utf8).write(to: real.appendingPathComponent("weights.bin"))
+        try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: real)
+        XCTAssertEqual(try modelHashes(real), try modelHashes(alias))
+    }
+
 }
