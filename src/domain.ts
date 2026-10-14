@@ -1,3 +1,11 @@
+export interface VocabularyProfile {
+  id: string;
+  name: string;
+  language: "fr" | "en";
+  terms: string[];
+  whisper_prompt: string;
+  builtin: boolean;
+}
 export interface Cue {
   startMs: number;
   endMs: number;
@@ -10,6 +18,7 @@ export interface Settings {
   autoModelUpdates: boolean;
   subtitles: { lineLength: number; maxLines: number; maxDurationMs: number };
   vocabulary: string[];
+  selectedProfileId?: string | null;
 }
 export interface Job {
   archived?: boolean;
@@ -55,6 +64,7 @@ export interface ModelUpdate {
   error: string | null;
 }
 export interface Snapshot {
+  profiles?: VocabularyProfile[];
   jobs: Job[];
   settings: Settings;
   busy: boolean;

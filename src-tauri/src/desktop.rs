@@ -60,6 +60,8 @@ struct Settings {
     auto_save: bool,
     subtitles: SubtitleSettings,
     vocabulary: Vec<String>,
+    #[serde(default)]
+    selected_profile_id: Option<String>,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -70,6 +72,7 @@ impl Default for Settings {
             auto_save: false,
             subtitles: SubtitleSettings::default(),
             vocabulary: vec![],
+            selected_profile_id: None,
         }
     }
 }
@@ -88,6 +91,7 @@ struct Snapshot {
     installed_models: Vec<String>,
     model_updates: Vec<serde_json::Value>,
     platform: String,
+    profiles: Vec<core::vocabulary::Profile>,
 }
 #[derive(Default)]
 struct Runtime {
@@ -99,6 +103,7 @@ struct Runtime {
 }
 struct Inner {
     store: Mutex<Store>,
+    profiles: Mutex<core::vocabulary::Profiles>,
     runtime: Mutex<Runtime>,
     root: PathBuf,
     helper: PathBuf,
@@ -269,6 +274,7 @@ impl AppState {
         let s = self.data.store.lock().map_err(err)?;
         Ok(Snapshot {
             jobs: s.jobs.clone(),
+            profiles: self.data.profiles.lock().map_err(err)?.profiles.clone(),
             settings: s.settings.clone(),
             busy,
             model_installed: self.installed(&s.settings.engine),
@@ -886,6 +892,45 @@ fn archive_completed(state: State<'_, AppState>) -> Result<(), String> {
     state.persist(&s)
 }
 #[tauri::command]
+fn save_profile(
+    state: State<'_, AppState>,
+    mut profile: core::vocabulary::Profile,
+) -> Result<core::vocabulary::Profile, String> {
+    if profile.id.is_empty() {
+        profile.id = uuid::Uuid::new_v4().to_string();
+    }
+    let mut profiles = state.data.profiles.lock().map_err(err)?;
+    let mut next = profiles.clone();
+    let saved = next.upsert(profile).map_err(err)?;
+    next.save(&state.data.root.join("profiles.json"))
+        .map_err(err)?;
+    *profiles = next;
+    Ok(saved)
+}
+#[tauri::command]
+fn delete_profile(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    let mut profiles = state.data.profiles.lock().map_err(err)?;
+    let mut next = profiles.clone();
+    next.remove(&id).map_err(err)?;
+    next.save(&state.data.root.join("profiles.json"))
+        .map_err(err)?;
+    *profiles = next;
+    Ok(())
+}
+#[tauri::command]
+fn reset_profile(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<core::vocabulary::Profile, String> {
+    let mut profiles = state.data.profiles.lock().map_err(err)?;
+    let mut next = profiles.clone();
+    let saved = next.reset(&id).map_err(err)?;
+    next.save(&state.data.root.join("profiles.json"))
+        .map_err(err)?;
+    *profiles = next;
+    Ok(saved)
+}
+#[tauri::command]
 fn save_settings(state: State<'_, AppState>, settings: Settings) -> Result<(), String> {
     let runtime = state.data.runtime.lock().map_err(err)?;
     if runtime.busy {
@@ -1074,10 +1119,13 @@ pub fn run() {
                 .map(|bytes| format!("{:.0} Go", bytes as f64 / 1_073_741_824.0))
                 .unwrap_or_else(|| "Mémoire inconnue".into());
             let platform = format!("macOS · {cpu} · {memory}");
+            let profiles =
+                core::vocabulary::load(&root.join("profiles.json"), &store.settings.vocabulary)?;
             app.manage(AppState {
                 data: Arc::new(Inner {
                     store: Mutex::new(store),
                     runtime: Mutex::new(Runtime::default()),
+                    profiles: Mutex::new(profiles),
                     root,
                     helper,
                     platform,
@@ -1099,6 +1147,9 @@ pub fn run() {
             retry_job,
             remove_job,
             save_settings,
+            save_profile,
+            delete_profile,
+            reset_profile,
             archive_completed,
             save_edit,
             export_job,
@@ -1130,6 +1181,7 @@ mod integration_tests {
             data: Arc::new(Inner {
                 store: Mutex::new(Store::default()),
                 runtime: Mutex::new(Runtime::default()),
+                profiles: Mutex::new(core::vocabulary::defaults()),
                 root: root.path().into(),
                 helper: PathBuf::from("/missing-helper"),
                 platform: "test".into(),
@@ -1175,6 +1227,7 @@ mod integration_tests {
                     settings: settings.clone(),
                 }),
                 runtime: Mutex::new(Runtime::default()),
+                profiles: Mutex::new(core::vocabulary::defaults()),
                 root: root.path().into(),
                 helper,
                 platform: "Native double verification".into(),
@@ -1255,6 +1308,7 @@ mod integration_tests {
                     },
                 }),
                 runtime: Mutex::new(Runtime::default()),
+                profiles: Mutex::new(core::vocabulary::defaults()),
                 root: root.path().into(),
                 helper: PathBuf::from(std::env::var("ELPO_TEST_HELPER").unwrap()),
                 platform: "French MP3 regression".into(),
@@ -1333,6 +1387,7 @@ mod integration_tests {
                     settings,
                 }),
                 runtime: Mutex::new(Runtime::default()),
+                profiles: Mutex::new(core::vocabulary::defaults()),
                 root: root.path().into(),
                 helper,
                 platform: "Native CI integration test".into(),
