@@ -14,20 +14,29 @@ pub fn transcript(value: &serde_json::Value, settings: &SubtitleSettings) -> Res
         .filter(|v| !v.is_empty())
         .ok_or_else(|| Error::Invalid("Version du moteur absente".into()))?
         .to_owned();
+    let whisper = value["engine"]
+        .as_str()
+        .is_some_and(|v| v.starts_with("whisper-"));
     if value["timingGranularity"].as_str() != Some("segment") {
         let words: Vec<Word> = serde_json::from_value(value["words"].clone())
             .map_err(|e| Error::Invalid(e.to_string()))?;
-        return Ok(Transcript {
-            cues: segment(&words, settings)?,
-            comparison_units: words,
-            model_version,
-            timing_note: None,
-        });
+        match segment(&words, settings) {
+            Ok(cues) => {
+                return Ok(Transcript {
+                    cues,
+                    comparison_units: words,
+                    model_version,
+                    timing_note: None,
+                })
+            }
+            Err(error) => {
+                if !whisper || value["segments"].as_array().is_none_or(|v| v.is_empty()) {
+                    return Err(error);
+                }
+            }
+        }
     }
-    if !value["engine"]
-        .as_str()
-        .is_some_and(|v| v.starts_with("whisper-"))
-    {
+    if !whisper {
         return Err(Error::Invalid(
             "Mode de temps par passages réservé à Whisper".into(),
         ));
@@ -70,7 +79,7 @@ pub fn transcript(value: &serde_json::Value, settings: &SubtitleSettings) -> Res
             text: cue.text.clone(),
         })
         .collect();
-    Ok(Transcript { cues, comparison_units, model_version, timing_note: Some("Horodatages par passages Whisper : les temps mot à mot sont incomplets. Le texte et les limites réelles des passages sont conservés ; certains passages peuvent dépasser la longueur ou la durée souhaitée.".into()) })
+    Ok(Transcript { cues, comparison_units, model_version, timing_note: Some("Horodatages par passages Whisper : les temps mot à mot sont incomplets ou ne permettent pas une segmentation valide. Le texte et les limites réelles des passages sont conservés ; certains passages peuvent dépasser la longueur ou la durée souhaitée.".into()) })
 }
 
 #[cfg(test)]
@@ -106,6 +115,19 @@ mod tests {
             let value = json!({"engine":"whisper-turbo","modelVersion":"test","timingGranularity":"segment","segments":[{"startMs":start,"endMs":end,"text":"ce soir"}]});
             assert!(transcript(&value, &SubtitleSettings::default()).is_err());
         }
+    }
+    #[test]
+    fn nonchronological_words_fall_back_to_real_passages() {
+        let value = json!({"engine":"whisper-turbo","modelVersion":"test",
+            "words":[{"startMs":2000,"endMs":2500,"text":"Bonjour"},{"startMs":500,"endMs":900,"text":"Paris"}],
+            "segments":[{"startMs":100,"endMs":3000,"text":"Bonjour Paris"}]});
+        let result = transcript(&value, &SubtitleSettings::default()).unwrap();
+        assert!(result.timing_note.is_some());
+        assert_eq!(
+            (result.cues[0].start_ms, result.cues[0].end_ms),
+            (100, 3000)
+        );
+        assert_eq!(result.cues[0].text, "Bonjour Paris");
     }
     #[test]
     fn word_output_keeps_existing_segmentation_and_no_warning() {
