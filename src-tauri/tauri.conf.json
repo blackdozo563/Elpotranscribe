@@ -64,7 +64,8 @@
     },
     "resources": {
       "resources/THIRD_PARTY_NOTICES.txt": "THIRD_PARTY_NOTICES.txt",
-      "../LICENSES.md": "LICENSES.md"
+      "../LICENSES.md": "LICENSES.md",
+      "../scripts/bench-local.sh": "bench-local.sh"
     }
   }
 }

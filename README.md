@@ -1,42 +1,64 @@
 # ELPOTRANSCRIBE
 
-Transcription audio pour macOS 14+ Apple Silicon. Interface française, traitement local, édition et exports SRT/TXT/VTT/ZIP.
+Application française de transcription locale pour macOS 14+ Apple Silicon. Deux moteurs : **Parakeet Ultra** par défaut et **Whisper large-v3-turbo Q5_0**, avec whisper.cpp, Metal et flash attention. Les modèles sont téléchargés explicitement dans Modèles IA ; les audios ne quittent pas le Mac.
 
-La [préversion publiée 1.1.0](https://github.com/blackdozo563/Elpotranscribe/releases/tag/v1.1.0) propose Parakeet Ultra, Whisper et leur double vérification locale. L’utilisateur rapporte un bon résultat avec Ultra sur **M2 8 Go** ; les nouveaux parcours restent à mesurer sur cette configuration.
+La version 1.2.0 est en validation. Le [DMG de préversion](https://github.com/blackdozo563/Elpotranscribe/releases/tag/v1.2.0) sera publié automatiquement après réussite du contrôle court, avec son SHA-256. Un tag seul ne prouve pas la disponibilité du DMG. La signature est ad hoc, non notariée.
 
-## Préversion 1.1.0
+## Transcrire et relire
 
-- **Rapide : Parakeet Ultra**, moteur par défaut.
-- **Qualité : Whisper large-v3-turbo Q5_0**, exécuté avec whisper.cpp et Metal. Base et Small restent disponibles comme options plus légères. « Qualité » indique le choix du moteur, pas une supériorité garantie pour chaque audio.
-- **Double vérification : deux moteurs locaux au choix**, utilisés successivement. Le bouton « Inverser les moteurs » échange le principal et le second avis. Un nouveau résultat conserve le texte et les temps du principal ; les divergences lexicales sont proposées à la relecture. Accepter une proposition modifie uniquement le texte, avec possibilité d’annuler. Aucun pourcentage de confiance inventé ni correction silencieuse.
-- **Mises à jour des modèles :** vérification de métadonnées au démarrage puis toutes les six heures lorsque l’application est ouverte et libre, désactivable dans les paramètres ; vérification manuelle et téléchargement explicite dans Modèles IA. Les nouveaux fichiers sont téléchargés et initialisés dans un dossier séparé ; le manifeste est remplacé atomiquement après réussite. Une erreur conserve le modèle précédent. Une ancienne installation sans provenance affiche une version inconnue, jamais « à jour » sans preuve.
-- **Entièrement local, sans Gemini.** Les connexions servent aux métadonnées de versions et aux téléchargements demandés. Aucun audio n’est envoyé. La transcription après installation ne nécessite pas de compte cloud.
+Importer jusqu’à dix fichiers par lot, choisir le moteur, la langue et éventuellement un profil. Les traitements sont séquentiels. Le changement de profil fixe sa langue ; « Aucun profil » conserve une transcription sans invite de domaine.
 
-La [validation native du code 1.1.0](https://github.com/blackdozo563/Elpotranscribe/actions/runs/38608950390) a réussi : DMG ARM64, installations sans poids en cache, Ultra, Whisper Base/Small/Turbo, file, SRT, annulation, intégrité, métadonnées de versions et double vérification dans les deux sens. Contrôles : 18 tests Rust, 5 TypeScript, 6 navigateur (IPC simulé), 10 Swift et 5 scénarios natifs. Cela ne remplace pas un benchmark de précision ou les essais physiques M1/M2 8 Go. Voir [docs/VALIDATION.md](docs/VALIDATION.md).
+Whisper utilise en priorité les temps réels de ses passages ; les mots horodatés sont facultatifs. Les passages de durée nulle, inversés ou chevauchants sont regroupés en conservant le texte et les bornes fournies par le moteur. Aucun temps de mot n’est inventé. Si le moteur ne fournit qu’un point sans durée, le texte reste terminé et consultable ; corriger les limites dans l’éditeur avant export. Un passage regroupé peut dépasser les cibles de longueur/durée.
 
-## Fonctions
+La double vérification est inversable : Ultra puis Turbo ou Turbo puis Ultra. Le premier processus est terminé avant de charger le second. Les temps du principal restent inchangés ; chaque correction exige une acceptation. Un terme du profil présent dans l’un des résultats signale et priorise la divergence, sans déterminer automatiquement quel moteur a raison.
 
-Import de fichiers/dossiers, jusqu’à dix audios par lot, file séquentielle, annulation du processus d’inférence, historique local et reprise des erreurs. Horodatages issus des moteurs, segmentation et contrôle de chronologie ; aucun alignement réparti artificiellement sur la durée audio.
+L’éditeur permet l’écoute, la modification des textes et des temps, la scission/fusion et l’annulation. Rechercher / Remplacer (⌘F ou Ctrl+F) propose précédent/suivant, compteur, casse, mot entier, remplacement unique/global annulable. Les suggestions de vocabulaire proches (distance de Levenshtein ≤ 2, accents ignorés) sont surlignées et applicables en un clic annulable. Sélectionner un mot puis « Ajouter au profil » enrichit le profil actif.
 
-Édition du texte et des temps, écoute, scission/fusion, annuler/rétablir, sauvegarde, exports atomiques avec confirmation avant écrasement. La préversion 1.1.2 en cours de validation ajoute une barre Rechercher / Remplacer (⌘F ou Ctrl+F) : recherche littérale dans toute la transcription, précédent/suivant, remplacement unique ou global, casse et mots entiers Unicode. Un remplacement global est annulable en une action et conserve les horodatages. Export SRT dans le dossier de chaque source et ZIP des résultats du lot. L’historique conserve une référence à l’audio, sans en faire une copie ; un fichier déplacé peut être relié.
+« Supprimer » retire le résultat du lot et de l’historique après confirmation native, sans supprimer l’audio source ni ses exports. « Nouveau lot » archive. Les exports SRT/TXT/VTT/ZIP sont atomiques ; l’export automatique conserve un SRT existant et l’éditeur demande confirmation pour l’écraser.
 
-Les poids sont téléchargés à la demande et restent locaux ; ils ne sont pas inclus dans le DMG. Les empreintes SHA-256 sont revérifiées avant transcription. Pour Whisper, le téléchargement est aussi comparé au SHA-256 publié par le dépôt du modèle via HTTPS. Les empreintes locales ne constituent pas une signature indépendante du fournisseur.
+## Profils de vocabulaire
 
-## Développement
+La navigation **Vocabulaire**, également accessible par **Modifier le profil…** à côté du sélecteur du lot, propose :
 
-Node 24, npm, Rust 1.93.0. Utiliser le checkout existant, avec les dépendances verrouillées :
+- **Liturgie FR** : noms bibliques, prières et vocabulaire liturgique, dont Évangile, Eucharistie, Magnificat et Agnus Dei.
+- **Psychologie FR** : vocabulaire clinique, TCC/psychanalyse et auteurs.
+- **Psychologie EN-US** : vocabulaire clinique anglais, CBT/DBT/ACT et auteurs.
+
+Les trois profils fournis sont éditables et réinitialisables. La liste existante est migrée dans **Mon vocabulaire**, sans effacement des entrées. La colonne gauche affiche profils, langue et nombre de termes ; la droite contient nom, langue, termes multilignes, ajout rapide par Entrée et invite Whisper. Création, duplication, suppression des profils personnels, import/export JSON, sauvegarde, annulation et protection des modifications non enregistrées sont disponibles.
+
+Les lignes sont nettoyées et dédupliquées sans tenir compte de la casse. Whisper reçoit l’invite et les termes ; son vrai tokenizer limite le préfixe transmis à **224 tokens au maximum** (et à la limite du modèle si inférieure). Le compteur exact est disponible une fois Turbo installé ; avant installation, une borne UTF-8 prudente est explicitement indiquée. Le comptage ne charge jamais un second moteur pendant une inférence. Les termes orientent l’orthographe, sans garantie de précision. Ultra n’accepte pas d’invite : les termes servent seulement à la relecture.
+
+Les données restent dans `~/Library/Application Support/com.elpo.elpotranscribe/` : `profiles.json`, `history.json`, `model-updates.json`, `models/`. Un fichier de profils corrompu est conservé et signalé, sans remplacement par des valeurs vides. Les mises à jour de modèles sont vérifiées automatiquement lorsque l’application est libre (désactivable), ou manuellement ; leur téléchargement reste explicite et une activation ratée conserve les poids précédents.
+
+## Mesurer sur votre M2 8 Go
+
+Installer les deux modèles puis quitter l’application pendant les mesures. Le script est inclus dans le `.app` ; **ni Python, ni Node, ni Homebrew, ni Xcode ne sont nécessaires**. Dans Terminal, remplacer les chemins des audios :
+
+```sh
+bash "/Applications/ELPOTRANSCRIBE.app/Contents/Resources/bench-local.sh" "$HOME/Music/extrait-2-minutes.mp3" fr
+bash "/Applications/ELPOTRANSCRIBE.app/Contents/Resources/bench-local.sh" "$HOME/Music/enregistrement-20-minutes.mp3" fr
+```
+
+Pour un fichier anglais, remplacer `fr` par `en`. Chaque commande effectue Ultra, Turbo, puis une vraie double vérification Ultra → Turbo (deux nouvelles passes), sans profil et sans modifier l’audio ni ses exports. Elle affiche temps mural, pic RSS du moteur, facteur temps réel et nombre de segments. Un facteur inférieur à 1 signifie un traitement plus rapide que la durée de l’audio. Le pic RSS de la double vérification est le maximum des deux processus successifs, pas leur somme ; il exclut l’interface et ne mesure pas toute la mémoire unifiée ni le swap. Le verrou des modèles protège aussi contre deux lancements indépendants du benchmark.
+
+**Les mesures sur M2 physique restent à faire par l’utilisateur.** Son retour sur Ultra était positif ; il ne constitue pas une mesure de Turbo. Le contrôle de mémoire physique exige au moins 8 Go et la pression mémoire critique arrête le moteur ; cela ne garantit ni l’absence de swap, ni une vitesse donnée.
+
+## Validation et développement
+
+Le contrôle de publication utilise un audio français synthétique court (≤ 90 s) : Ultra, Turbo, export, suppression persistée, annulation et double vérification. Le benchmark empaqueté et le plafond réel de tokens sont également exercés. Le test MP3 de 20 minutes tourne dans un job indépendant, `continue-on-error: true`, sans bloquer la publication. Tous les jobs ont une limite de 60 minutes. Les runners GitHub ne constituent pas un benchmark M2 8 Go. Voir [validation](docs/VALIDATION.md).
+
+Node 24, Rust 1.93.0 pour le développement portable :
 
 ```sh
 npm ci
 npm run build
 npm test
+npm run test:browser
 cargo test -p elpo-core --locked
 cargo clippy -p elpo-core --locked -- -D warnings
-npx playwright install chromium
-npm run test:browser
 ```
 
-Sur Linux cloud avec un répertoire personnel en lecture seule :
+En cloud Linux, utiliser les caches inscriptibles si nécessaire :
 
 ```sh
 export npm_config_cache=/workspace/.npm-cache
@@ -45,44 +67,16 @@ export PATH=/workspace/.cargo/bin:$PATH
 ELPO_CHROMIUM_EXECUTABLE=/usr/bin/chromium npm run test:browser
 ```
 
-`npm run dev` démarre l’interface web pour les contrôles internes. Les tests navigateur simulent l’IPC ; ils ne prouvent pas l’inférence ou les dialogues macOS.
-
-### Application et DMG sur Mac
-
-Mac ARM64, macOS 14+, Xcode 26 / Swift 6.2+, CMake, Node et Rust. La CI utilise `macos-15` ARM64 avec Xcode 26.3 sélectionné explicitement.
+Sur Mac ARM64 : Xcode 26 / Swift 6.2+, CMake, Node et Rust sont requis **pour compiler**, pas pour utiliser l’application :
 
 ```sh
-npm ci
 npm run native:build
 swift test --package-path native/swift
-npm run tauri -- dev
-```
-
-Pour produire et vérifier un DMG :
-
-```sh
-npm run native:build
+cargo test -p elpotranscribe --locked
 npm run tauri -- build --target aarch64-apple-darwin -- --locked
 bash scripts/validate-dmg.sh target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
 ```
 
+Les tests navigateur utilisent un IPC simulé : ils ne prouvent pas l’inférence ou les dialogues macOS. Les codecs système décodent MP3/WAV/M4A/AAC/FLAC/AIFF ; OGG/WebM dépendent de macOS. L’installation sur un Mac propre, Finder, les dialogues natifs et l’utilisation physiquement déconnectée restent à vérifier manuellement. La précision de transcription et l’alignement n’ont pas été mesurés contre une vérité terrain annotée.
 
-Les utilisateurs du DMG n’ont besoin ni de Python, ni de Node, ni de Homebrew. La signature par défaut est ad hoc, non notariée. Vérifier la provenance et SHA-256 ; si nécessaire, utiliser l’autorisation ciblée de macOS, sans désactiver Gatekeeper globalement. Voir [docs/MACOS.md](docs/MACOS.md).
-
-## Utilisation
-
-1. Installer l’application depuis une [Release validée](https://github.com/blackdozo563/Elpotranscribe/releases).
-2. Télécharger le moteur souhaité dans Modèles IA.
-3. Importer les audios, choisir le moteur et la langue, puis lancer la file. Anglais couvre les variantes US/UK, sans garantie spécifique à chaque accent.
-4. Ouvrir un résultat pour l’éditer ou utiliser Double vérification avec un autre moteur installé.
-5. Enregistrer et exporter. Les exports automatiques conservent les fichiers existants ; l’éditeur permet de confirmer leur remplacement.
-
-## Limites
-
-- Les performances Turbo et la double vérification sur **M1/M2 physiques 8 Go** restent à mesurer. Un seul processus d’inférence tourne à la fois ; un contrôle de mémoire physique et un arrêt sur pression mémoire critique ne garantissent pas l’absence de swap ou d’épuisement mémoire.
-- Deux modèles peuvent faire la même erreur. Les divergences sont lexicales ; elles ne constituent ni une détection exhaustive d’erreurs, ni un jugement sur le bon texte. L’alignement mot à mot reste à évaluer contre une vérité terrain.
-- MP3/WAV/M4A/AAC/FLAC/AIFF utilisent AVFoundation. OGG et WebM dépendent des codecs système ; les fichiers non décodables sont refusés. Aucun FFmpeg embarqué.
-- Les dialogues, Finder, l’installation sur Mac propre et les essais entièrement déconnectés restent à vérifier manuellement. Pas de sandbox App Store ni de signets de sécurité persistants.
-- Le vocabulaire personnalisé sert de référence pour la relecture, sans correction automatique. La fermeture interrompt le traitement ; le résultat principal déjà obtenu est conservé pour une vérification interrompue.
-
-Voir [architecture](docs/ARCHITECTURE.md), [moteurs](docs/ADVANCED-ENGINES.md), [validation](docs/VALIDATION.md) et [licences](LICENSES.md).
+Voir [architecture](docs/ARCHITECTURE.md), [moteurs](docs/ADVANCED-ENGINES.md), [licences](LICENSES.md) et [installation macOS](docs/MACOS.md).

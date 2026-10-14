@@ -26,6 +26,8 @@ let ultraSDKFolderName = Repo.parakeetUltra.folderName
                 let updates = try await checkModelUpdates(root: root)
                 emit(["updates": try JSONSerialization.jsonObject(with: JSONEncoder().encode(updates))]); return
             }
+            let lease = try ModelLease(root: root)
+            defer { lease.release() }
             let engine = request.engine ?? "ultra"
             if engine.hasPrefix("whisper-") {
                 try requirePhysicalMemory(engine: engine, bytes: ProcessInfo.processInfo.physicalMemory)

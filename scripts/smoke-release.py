@@ -47,4 +47,9 @@ with tempfile.TemporaryDirectory(prefix='elpo-release-') as folder:
         env['ELPO_TEST_ENGINE'] = engine
         integration('real_queue_recovers_and_exports_to_each_source_folder',env)
     integration('real_double_verification_preserves_primary_and_reverses_engines',env)
+    bench_env=os.environ.copy();bench_env['ELPO_BENCH_MODELS']=str(models)
+    bench=subprocess.run([str(helper.with_name('elpotranscribe')),'--bench-local',str(audio),'fr'],env=bench_env,text=True,capture_output=True,timeout=900)
+    print(bench.stdout,flush=True)
+    assert bench.returncode==0, bench.stderr[-3000:]
+    assert all(label in bench.stdout for label in ['Ultra :','Whisper Turbo :','Double vérification Ultra puis Turbo :','pic RSS moteur','facteur temps réel','segments'])
     print('::notice title=Short French release gate::Ultra, Turbo, real queues, export, persisted deletion, cancellation and sequential double verification passed; fixture duration '+str(duration)+' ms.',flush=True)

@@ -10,6 +10,8 @@ app="$mount_dir/ELPOTRANSCRIBE.app"
 test -L "$mount_dir/Applications"
 test -x "$app/Contents/MacOS/elpotranscribe"
 test -x "$app/Contents/MacOS/elpo-asr"
+test -f "$app/Contents/Resources/bench-local.sh"
+bash -n "$app/Contents/Resources/bench-local.sh"
 file "$app/Contents/MacOS/elpotranscribe" | grep -q arm64
 file "$app/Contents/MacOS/elpo-asr" | grep -q arm64
 codesign --verify --deep --strict --verbose=2 "$app"

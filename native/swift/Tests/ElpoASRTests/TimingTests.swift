@@ -148,3 +148,15 @@ final class MemorySafetyTests: XCTestCase {
         }
     }
 }
+
+final class ModelLeaseTests: XCTestCase {
+    func testSecondModelCannotLoadUntilFirstLeaseIsReleased() throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let first=try ModelLease(root: root)
+        XCTAssertThrowsError(try ModelLease(root: root))
+        first.release()
+        let next=try ModelLease(root: root)
+        next.release()
+    }
+}
