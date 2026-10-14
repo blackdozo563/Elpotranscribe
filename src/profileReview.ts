@@ -27,7 +27,7 @@ export interface NearMiss {
   term: string;
 }
 const tokens = (s: string) => [
-  ...s.matchAll(/[\p{L}\p{N}]+(?:[-’'][\p{L}\p{N}]+)*/gu),
+  ...s.matchAll(/[\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)*/gu),
 ];
 export function nearMisses(
   text: string,

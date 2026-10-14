@@ -42,3 +42,14 @@ it("construit l’invite sans doublons ni lignes vides", () => {
     "Lisons.\nÉvangile",
   );
 });
+
+it("garde les élisions françaises lors de la proposition d’un terme", () => {
+  const text = "L’Evengile et l’Évangile.";
+  const matches = nearMisses(text, { ...profile, terms: ["Évangile"] });
+  expect(matches).toHaveLength(1);
+  expect(matches[0].original).toBe("Evengile");
+  const m = matches[0];
+  expect(text.slice(0, m.start) + m.term + text.slice(m.end)).toBe(
+    "L’Évangile et l’Évangile.",
+  );
+});
