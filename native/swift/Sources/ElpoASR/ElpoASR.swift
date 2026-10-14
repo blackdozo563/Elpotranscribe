@@ -89,7 +89,7 @@ func probe(_ path: String) throws -> UInt64 {
             let words = try timings.map { Word(startMs: try milliseconds($0.startTime), endMs: try milliseconds($0.endTime), text: $0.word) }
             await manager.cleanup()
             let data = try JSONEncoder().encode(words)
-            emit(["engine": "Parakeet Ultra", "modelVersion": sdkRevision, "text": result.text, "words": try JSONSerialization.jsonObject(with: data)])
+            emit(["engine": "Parakeet Ultra", "modelVersion": sdkRevision, "text": result.text, "durationMs": try milliseconds(result.duration), "processingTimeMs": try milliseconds(result.processingTime), "words": try JSONSerialization.jsonObject(with: data)])
         } catch { emit(["error": error.localizedDescription]); exit(1) }
     }
 }

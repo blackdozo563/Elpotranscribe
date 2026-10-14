@@ -14,7 +14,7 @@ Machine : Linux x86_64, Node 24.19.0, Rust 1.93.0. Date : 14 octobre 2026.
 | Syntaxe shell/Python des scripts | Vérifiée |
 | Audit npm des dépendances d’exécution | Aucune vulnérabilité signalée au moment du contrôle |
 | Backend Rust macOS | Non validé : compilation croisée bloquée sur Objective-C faute de SDK Apple |
-| Pont Swift / tests Swift | Non exécutés : Swift et SDK macOS absents |
+| Pont Swift / tests Swift | Compilation réussie et étape de tests réussie sur le runner macOS ARM64, [CI #1](https://github.com/blackdozo563/Elpotranscribe/actions/runs/38556817791) ; non exécutables sur la machine Linux |
 | Initialisation et inférence Parakeet Ultra | Non exécutées ici ; test réel prévu dans la CI macOS |
 | DMG, ARM64, signatures et Finder | Non validés ; aucun DMG généré ici |
 | M1 8 Go / M2 8 Go | Aucun test matériel ni mesure mémoire réalisé |

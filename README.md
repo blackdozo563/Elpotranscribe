@@ -19,7 +19,7 @@ Dépôt prévu : https://github.com/blackdozo563/Elpotranscribe
 - Exports atomiques, confirmation d’écrasement, conservation des noms, ZIP avec collisions résolues, révélation Finder.
 - Historique JSON écrit atomiquement dans Application Support, sans duplication de l’audio ; bouton Nouveau lot pour conserver les résultats et libérer la file ; liaison d’un audio déplacé.
 
-Le pont natif et ces parcours macOS sont **implémentés mais non exécutés ici**. Les preuves obtenues sous Linux sont séparées dans [docs/VALIDATION.md](docs/VALIDATION.md).
+Le pont Swift compile sur le runner macOS ARM64 et son étape de tests réussit. L’inférence et les parcours de l’application macOS restent **à valider de bout en bout**. Les preuves obtenues sous Linux sont séparées dans [docs/VALIDATION.md](docs/VALIDATION.md).
 
 ## Développement
 
@@ -55,6 +55,7 @@ Les utilisateurs du futur DMG n’auront besoin ni de Python, ni de Node, ni de 
 
 ```sh
 npm run native:build
+python3 scripts/collect-licenses.py
 npm run tauri -- build --target aarch64-apple-darwin -- --locked
 bash scripts/validate-dmg.sh target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
 ```

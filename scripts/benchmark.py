@@ -16,4 +16,4 @@ def normalized(text): return ' '.join(re.findall(r'\w+',text.lower(),re.UNICODE)
 if __name__=='__main__':
     result=json.loads(Path(sys.argv[1]).read_text());reference=normalized(Path(sys.argv[2]).read_text());prediction=normalized(result['text'])
     if not reference: raise SystemExit('A nonempty reference is required')
-    print(json.dumps({'WER':distance(reference.split(),prediction.split())/len(reference.split()),'CER':distance(reference,prediction)/len(reference),'engine':result['engine'],'peakMemory':'unmeasured; collect /usr/bin/time -l output on target Mac','alignmentQuality':'requires manually aligned ground truth'},ensure_ascii=False,indent=2))
+    print(json.dumps({'WER':distance(reference.split(),prediction.split())/len(reference.split()),'CER':distance(reference,prediction)/len(reference),'engine':result['engine'],'measurement':result.get('measurement','unmeasured; collect /usr/bin/time -l output on target Mac'),'alignmentQuality':'requires manually aligned ground truth'},ensure_ascii=False,indent=2))

@@ -71,6 +71,7 @@ pub fn validate(cues: &[Cue]) -> Result<()> {
             || c.end_ms > 359_999_999
             || c.text.trim().is_empty()
             || c.text.contains('\0')
+            || c.text.lines().count() > 2
             || c.text.contains("-->")
             || c.text.contains('\r')
             || c.text.split('\n').any(|l| l.trim().is_empty())
@@ -323,7 +324,7 @@ mod tests {
     }
     #[test]
     fn reject_empty_injection_zero() {
-        for text in ["", "a\n\nb", "a --> b", "a\rb"] {
+        for text in ["", "a\n\nb", "a --> b", "a\rb", "a\nb\nc"] {
             let mut c = cue();
             c.text = text.into();
             assert!(validate(&[c]).is_err());

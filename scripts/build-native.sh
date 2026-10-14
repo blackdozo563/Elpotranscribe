@@ -10,3 +10,5 @@ mkdir -p src-tauri/binaries
 cp native/swift/.build/arm64-apple-macosx/release/elpo-asr src-tauri/binaries/elpo-asr-aarch64-apple-darwin
 codesign --force --sign - src-tauri/binaries/elpo-asr-aarch64-apple-darwin
 file src-tauri/binaries/elpo-asr-aarch64-apple-darwin | /usr/bin/grep -q arm64
+
+python3 scripts/collect-licenses.py

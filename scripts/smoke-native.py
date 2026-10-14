@@ -1,18 +1,23 @@
 #!/usr/bin/env python3
 """Real inference integration check. No mocked transcript. Requires the packaged helper on ARM64 macOS."""
-import hashlib,json,os,pathlib,subprocess,sys,tempfile,urllib.request
+import hashlib,json,os,pathlib,re,subprocess,sys,tempfile,time,urllib.request
 root=pathlib.Path(__file__).resolve().parent.parent
 helper=pathlib.Path(sys.argv[1] if len(sys.argv)>1 else root/'src-tauri/binaries/elpo-asr-aarch64-apple-darwin')
 manifest=json.loads((root/'fixtures/jfk.json').read_text())
 def call(request):
-    r=subprocess.run([str(helper)],input=json.dumps(request),text=True,capture_output=True)
+    started=time.monotonic()
+    r=subprocess.run(['/usr/bin/time','-l',str(helper)],input=json.dumps(request),text=True,capture_output=True)
+    elapsed=time.monotonic()-started
     values=[]
     for line in r.stdout.splitlines():
         try: values.append(json.loads(line))
         except json.JSONDecodeError: pass
     if r.returncode or not values or 'error' in values[-1]:
         raise RuntimeError(f'Native inference failed (exit={r.returncode}): {values[-1] if values else "no JSON result"}')
-    return values[-1]
+    value=values[-1]
+    peak=re.search(r'(\d+)\s+maximum resident set size',r.stderr)
+    value['measurement']={'wallSeconds':elapsed,'peakMemoryBytes':int(peak.group(1)) if peak else None,'platform':os.uname().machine}
+    return value
 with tempfile.TemporaryDirectory(prefix='elpo-smoke-') as temporary:
     temp=pathlib.Path(temporary);audio=temp/'jfk.wav'
     with urllib.request.urlopen(manifest['url']) as response: audio.write_bytes(response.read())
@@ -22,6 +27,7 @@ with tempfile.TemporaryDirectory(prefix='elpo-smoke-') as temporary:
     result=call({'action':'transcribe','models':str(models),'source':str(audio),'language':'en'})
     assert result['engine']=='Parakeet Ultra'
     assert result['words'] and all(w['endMs']>w['startMs']>=0 for w in result['words'])
+    result['measurement']['realTimeFactor']=result['measurement']['wallSeconds']/(result['durationMs']/1000)
     text=result['text'].lower()
     for word in ['country','ask','you']: assert word in text, f'Missing expected word: {word}'
     output=root/'target/smoke-result.json';output.write_text(json.dumps(result,ensure_ascii=False))
