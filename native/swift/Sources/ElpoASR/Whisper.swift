@@ -56,6 +56,8 @@ final class WhisperTokens {
         bytes.removeAll(); start = -1; end = -1
     }
     func append(_ data: Data, start: Int64, end: Int64) {
+        // A later token must not hide a missing first token's timestamp.
+        if start < 0 || end < start { invalid = true }
         // Token strings can split UTF-8 characters; decode only whole words.
         if data.first == 32 { flush() }
         if self.start < 0 { self.start = start }

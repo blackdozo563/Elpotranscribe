@@ -75,6 +75,13 @@ final class WhisperFallbackTests: XCTestCase {
         XCTAssertEqual(result.units.first?.startMs, 100)
         XCTAssertEqual(result.units.first?.endMs, 900)
     }
+    func testMissingFirstTokenTimeCannotBeHiddenByLaterToken() throws {
+        let output = WhisperOutput()
+        output.tokens.append(Data(" bo".utf8), start: -1, end: -1)
+        output.tokens.append(Data("njour".utf8), start: 200, end: 800)
+        output.appendSegment(Data(" bonjour".utf8), start: 100, end: 900)
+        XCTAssertEqual(try output.result().granularity, "segment")
+    }
     func testCompleteWordsStillUseWordTimes() throws {
         let output = WhisperOutput()
         output.tokens.append(Data(" Bonjour".utf8), start: 120, end: 800)
