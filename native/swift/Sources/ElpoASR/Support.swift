@@ -49,3 +49,10 @@ func probe(_ path: String) throws -> UInt64 {
     guard buffer.frameLength > 0 else { throw Failure(message: "Aucun échantillon audio décodable") }
     return try milliseconds(Double(audio.length) / audio.processingFormat.sampleRate)
 }
+
+func requirePhysicalMemory(engine: String, bytes: UInt64) throws {
+    guard bytes >= 7_500_000_000 else {
+        let name = engine == "whisper-turbo" ? "Whisper Turbo" : "ce moteur"
+        throw Failure(message: "Mémoire physique insuffisante pour \(name) : au moins 8 Go de mémoire unifiée sont nécessaires.")
+    }
+}

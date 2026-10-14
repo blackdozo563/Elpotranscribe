@@ -138,3 +138,13 @@ final class WhisperFallbackTests: XCTestCase {
         XCTAssertThrowsError(try WhisperOutput().result())
     }
 }
+
+final class MemorySafetyTests: XCTestCase {
+    func testTurboAcceptsEightGBAndRejectsFourGBBeforeLoading() throws {
+        XCTAssertNoThrow(try requirePhysicalMemory(engine: "whisper-turbo", bytes: 8_589_934_592))
+        XCTAssertThrowsError(try requirePhysicalMemory(engine: "whisper-turbo", bytes: 4_294_967_296)) { error in
+            XCTAssertTrue(error.localizedDescription.contains("Whisper Turbo"))
+            XCTAssertTrue(error.localizedDescription.contains("8 Go"))
+        }
+    }
+}

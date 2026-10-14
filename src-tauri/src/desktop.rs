@@ -198,6 +198,11 @@ impl AppState {
             if r.shutting_down {
                 return Err("Application en cours de fermeture".into());
             }
+            if r.child.is_some() {
+                return Err(
+                    "Un moteur est déjà chargé. Attendez sa fermeture avant de continuer.".into(),
+                );
+            }
             if let Some(id) = id {
                 let s = self.data.store.lock().map_err(err)?;
                 if s.jobs.iter().any(|j| {
@@ -1155,6 +1160,33 @@ pub fn run() {
 #[cfg(test)]
 mod integration_tests {
     use super::*;
+    #[test]
+    fn one_process_reservation_and_shutdown_reap_before_reuse() {
+        let root = tempfile::tempdir().unwrap();
+        let state = AppState {
+            data: Arc::new(Inner {
+                store: Mutex::new(Store::default()),
+                runtime: Mutex::new(Runtime::default()),
+                root: root.path().into(),
+                helper: PathBuf::from("/missing-helper"),
+                platform: "test".into(),
+            }),
+        };
+        state.reserve().unwrap();
+        assert!(state.reserve().is_err());
+        state.release();
+        state.reserve().unwrap();
+        let child = Command::new("/bin/sleep").arg("10").spawn().unwrap();
+        state.data.runtime.lock().unwrap().child = Some(child);
+        assert!(state
+            .helper(serde_json::json!({"action":"transcribe"}), None)
+            .unwrap_err()
+            .contains("déjà chargé"));
+        state.shutdown();
+        let runtime = state.data.runtime.lock().unwrap();
+        assert!(runtime.child.is_none());
+        assert!(!runtime.busy);
+    }
     #[test]
     #[ignore = "Requires installed Ultra and Whisper Turbo; run from smoke-native.py"]
     fn real_double_verification_preserves_primary_and_reverses_engines() {

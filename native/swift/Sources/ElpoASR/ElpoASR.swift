@@ -28,7 +28,7 @@ let ultraSDKFolderName = Repo.parakeetUltra.folderName
             }
             let engine = request.engine ?? "ultra"
             if engine.hasPrefix("whisper-") {
-                guard ProcessInfo.processInfo.physicalMemory >= 7_500_000_000 else { throw Failure(message: "Au moins 8 Go de mémoire unifiée sont requis") }
+                try requirePhysicalMemory(engine: engine, bytes: ProcessInfo.processInfo.physicalMemory)
                 if request.action == "install" {
                     try await installWhisper(root: root, engine: engine)
                     emit(["installed": true, "engine": engine]); return
@@ -62,7 +62,7 @@ let ultraSDKFolderName = Repo.parakeetUltra.folderName
                 emit(["installed": true, "engine": "Parakeet Ultra"]); return
             }
             guard request.action == "transcribe", let source = request.source else { throw Failure(message: "Commande inconnue") }
-            guard ProcessInfo.processInfo.physicalMemory >= 7_500_000_000 else { throw Failure(message: "Au moins 8 Go de mémoire unifiée sont requis") }
+            try requirePhysicalMemory(engine: engine, bytes: ProcessInfo.processInfo.physicalMemory)
             let manifest = try JSONDecoder().decode(Manifest.self, from: Data(contentsOf: marker))
             let directory = try installedDirectory(root: root, engine: "ultra", manifest: manifest)
             let actual = try modelHashes(directory)

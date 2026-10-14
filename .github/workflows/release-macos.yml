@@ -85,7 +85,7 @@ jobs:
             exit 1
           fi
           python3 scripts/verify-swift-tests.py target/swift-tests.log
-      - run: cargo test -p elpo-core --locked
+      - run: cargo test -p elpo-core --locked && cargo test -p elpotranscribe --locked
       - run: npm run check && npm test
       - name: Prepare optional Developer ID signing
         env:
