@@ -42,14 +42,9 @@
       "icons/128x128.png"
     ],
     "externalBin": [
-      "binaries/elpo-asr",
-      "binaries/elpo-qwen"
+      "binaries/elpo-asr"
     ],
     "macOS": {
-      "files": {
-        "MacOS/mlx.metallib": "resources/qwen/mlx.metallib",
-        "Frameworks": "resources/qwen-runtime"
-      },
       "minimumSystemVersion": "14.0",
       "signingIdentity": "-",
       "dmg": {

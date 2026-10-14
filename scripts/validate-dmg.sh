@@ -10,13 +10,10 @@ app="$mount_dir/ELPOTRANSCRIBE.app"
 test -L "$mount_dir/Applications"
 test -x "$app/Contents/MacOS/elpotranscribe"
 test -x "$app/Contents/MacOS/elpo-asr"
-test -x "$app/Contents/MacOS/elpo-qwen"
-test -s "$app/Contents/MacOS/mlx.metallib"
 file "$app/Contents/MacOS/elpotranscribe" | grep -q arm64
 file "$app/Contents/MacOS/elpo-asr" | grep -q arm64
-file "$app/Contents/MacOS/elpo-qwen" | grep -q arm64
 codesign --verify --deep --strict --verbose=2 "$app"
-for binary in "$app/Contents/MacOS/elpotranscribe" "$app/Contents/MacOS/elpo-asr" "$app/Contents/MacOS/elpo-qwen"; do
+for binary in "$app/Contents/MacOS/elpotranscribe" "$app/Contents/MacOS/elpo-asr"; do
   otool -L "$binary"
   if otool -L "$binary" | grep -E '/opt/homebrew|/usr/local|/Users/runner|/workspace'; then
     echo 'Dépendance de développement externe détectée' >&2; exit 1

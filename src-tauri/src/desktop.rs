@@ -280,8 +280,15 @@ impl AppState {
             .collect(),
             model_updates: fs::read(self.data.root.join("model-updates.json"))
                 .ok()
-                .and_then(|data| serde_json::from_slice(&data).ok())
-                .unwrap_or_default(),
+                .and_then(|data| serde_json::from_slice::<Vec<serde_json::Value>>(&data).ok())
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|value| {
+                    value["engine"]
+                        .as_str()
+                        .is_some_and(|engine| self.installed(engine))
+                })
+                .collect(),
             platform: self.data.platform.clone(),
         })
     }

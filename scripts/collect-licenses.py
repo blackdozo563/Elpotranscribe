@@ -20,15 +20,17 @@ for name,path,license in sorted(entries):
     for notice in sorted(notices):parts.append('\n'+notice.name+'\n'+notice.read_text(errors='replace')+'\n')
 parts.append('\nFluidAudio SDK pinned to 224de0fb3c304b41bbae24e85e1801900865ff3e\n'+(root/'third-party/FluidAudio-LICENSE.txt').read_text())
 parts.append('\nwhisper.cpp 1.8.3 pinned to 2eeeba56e9edd762b4b38467bab96c2517163158\n'+(root/'third-party/whisper.cpp-LICENSE.txt').read_text())
-swift_pins=json.loads((root/'native/qwen/Package.resolved').read_text())['pins']
-swift_checkouts=root/'target/qwen-packages/checkouts'
-for pin in swift_pins:
-    checkout=swift_checkouts/pin['identity']
-    if not checkout.is_dir():
-        raise RuntimeError('Missing Swift dependency notices: '+pin['identity'])
-    parts.append('\n'+'='*72+'\n'+pin['identity']+' '+str(pin['state'])+'\n')
-    for notice in sorted(checkout.iterdir()):
-        if notice.is_file() and notice.name.upper().startswith(('LICENSE','LICENCE','COPYING','NOTICE')):
-            parts.append(notice.read_text(errors='replace')+'\n')
+# Experimental Qwen dependencies are collected only if explicitly bundled.
+if 'binaries/elpo-qwen' in json.loads((root/'src-tauri/tauri.conf.json').read_text())['bundle']['externalBin']:
+    swift_pins=json.loads((root/'native/qwen/Package.resolved').read_text())['pins']
+    swift_checkouts=root/'target/qwen-packages/checkouts'
+    for pin in swift_pins:
+        checkout=swift_checkouts/pin['identity']
+        if not checkout.is_dir():
+            raise RuntimeError('Missing Swift dependency notices: '+pin['identity'])
+        parts.append('\n'+'='*72+'\n'+pin['identity']+' '+str(pin['state'])+'\n')
+        for notice in sorted(checkout.iterdir()):
+            if notice.is_file() and notice.name.upper().startswith(('LICENSE','LICENCE','COPYING','NOTICE')):
+                parts.append(notice.read_text(errors='replace')+'\n')
 output=root/'src-tauri/resources/THIRD_PARTY_NOTICES.txt';output.parent.mkdir(parents=True,exist_ok=True);output.write_text(''.join(parts))
 print('Collected notices for',len(entries),'resolved Rust/npm packages plus FluidAudio')

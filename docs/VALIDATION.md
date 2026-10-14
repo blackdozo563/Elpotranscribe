@@ -38,3 +38,9 @@ Le flag réseau désactivé de FluidAudio est utilisé pendant chaque transcript
 Le 14 octobre 2026, l’utilisateur indique avoir testé la version avec Parakeet Ultra sur un **Mac M2 8 Go**, avec un résultat jugé « top ». Ce retour confirme un essai utilisateur réussi de transcription sur cette configuration. Version de macOS, identifiant exact du build, durée/format/langue de l’audio, temps de calcul et pic mémoire non communiqués. Il ne valide pas les nouveaux moteurs et ne remplace pas le protocole complet de tests physiques.
 
 ## Développement 1.1.0
+
+Validation portable actuelle : 17 tests Rust (dont quatre de comparaison lexicale), cinq tests TypeScript et six tests navigateur réussis. Les trois nouveaux scénarios navigateur vérifient l’inversion des moteurs, l’application annulable d’une suggestion sans modifier les temps, et le téléchargement explicite depuis la notification de mise à jour. L’IPC y est simulé : aucune inférence prouvée par ces tests.
+
+[La révision 802fe1c a passé la validation native](https://github.com/blackdozo563/Elpotranscribe/actions/runs/38595539654) : DMG ARM64, Ultra, Whisper Base/Small, file et véritables exports SRT. Cette ancienne validation contenait aussi des fonctions retirées depuis. Elle ne valide pas les nouveaux parcours actuels.
+
+La nouvelle CI doit encore confirmer les dix tests Swift, Turbo Q5_0, les mises à jour et la double vérification réelle dans les deux sens depuis le DMG. Qwen a été compilé sur macOS ; son essai d’inférence a échoué au contrôle d’intégrité. Le correctif en développement n’est pas encore validé ; les sélecteurs restent désactivés.

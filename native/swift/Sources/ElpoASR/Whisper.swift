@@ -73,6 +73,7 @@ func transcribeWhisper(root: URL, engine: String, source: String, language: Stri
     defer { try? FileManager.default.removeItem(at: temporary) }
     let started = Date()
     let count = try floatAudio(URL(fileURLWithPath: source), destination: temporary)
+    guard count <= Int32.max else { throw Failure(message: "Audio trop long pour cette version Whisper ; divisez le fichier.") }
     let audio = try Data(contentsOf: temporary, options: .alwaysMapped)
     let tokens = WhisperTokens()
     let status = audio.withUnsafeBytes { samples in

@@ -1,47 +1,56 @@
 # ELPOTRANSCRIBE
 
-Transcription audio intelligente pour macOS Apple Silicon. Interface française, traitement local, édition de sous-titres et exports SRT/TXT/VTT/ZIP.
+Transcription audio pour macOS 14+ Apple Silicon. Interface française, traitement local, édition et exports SRT/TXT/VTT/ZIP.
 
-**Préversion 1.0.0. Le parcours local Parakeet Ultra, la file et le DMG ARM64 ont passé la validation native sur macOS. Les moteurs avancés et la validation physique M1/M2 8 Go restent à compléter : cette préversion ne couvre pas tout le cahier des charges.**
+La [préversion publiée 1.0.0](https://github.com/blackdozo563/Elpotranscribe/releases/tag/v1.0.0) utilise Parakeet Ultra. L’utilisateur rapporte un bon résultat sur **M2 8 Go**. Ce retour ne constitue pas un benchmark complet.
 
+## Version 1.1.0 en développement
 
-Dépôt prévu : https://github.com/blackdozo563/Elpotranscribe
+- **Rapide : Parakeet Ultra**, moteur par défaut.
+- **Qualité : Whisper large-v3-turbo Q5_0**, exécuté avec whisper.cpp et Metal. Base et Small restent disponibles comme options plus légères. « Qualité » indique le choix du moteur, pas une supériorité garantie pour chaque audio.
+- **Double vérification : deux moteurs locaux au choix**, utilisés successivement. Le bouton « Inverser les moteurs » échange le principal et le second avis. Un nouveau résultat conserve le texte et les temps du principal ; les divergences lexicales sont proposées à la relecture. Accepter une proposition modifie uniquement le texte, avec possibilité d’annuler. Aucun pourcentage de confiance inventé ni correction silencieuse.
+- **Mises à jour des modèles :** vérification de métadonnées au démarrage puis toutes les six heures lorsque l’application est ouverte et libre, désactivable dans les paramètres ; vérification manuelle et téléchargement explicite dans Modèles IA. Les nouveaux fichiers sont téléchargés et initialisés dans un dossier séparé ; le manifeste est remplacé atomiquement après réussite. Une erreur conserve le modèle précédent. Une ancienne installation sans provenance affiche une version inconnue, jamais « à jour » sans preuve.
+- **Entièrement local, sans Gemini.** Les connexions servent aux métadonnées de versions et aux téléchargements demandés. Aucun audio n’est envoyé. La transcription après installation ne nécessite pas de compte cloud.
+- Qwen3-ASR 0.6B/1.7B reste un chantier séparé, désactivé dans les sélecteurs et absent du DMG 1.1.0. Canary et le nettoyage par LLM ne sont pas intégrés.
 
-## Ce que contient le code
+La validation native du nouveau code est en cours. Ultra et Whisper Base/Small ont déjà passé une [validation du DMG sur ARM64](https://github.com/blackdozo563/Elpotranscribe/actions/runs/38595539654) dans une révision antérieure. Cela ne valide pas automatiquement Turbo, les mises à jour ou la double vérification actuels. Voir [docs/VALIDATION.md](docs/VALIDATION.md).
 
-- Interface React/Tauri 2 sombre, navigation clavier, icône originale, préférences locales.
-- Dialogues macOS, glisser-déposer, import de dossiers et contrôle de dix fichiers par lot ; contrôle du décodage via AVFoundation.
-- File de traitement native séquentielle ; annulation par arrêt du processus d’inférence, reprise des erreurs et détection des interruptions au redémarrage.
-- Pont Swift **Parakeet Ultra**, épinglé à FluidAudio `224de0fb3c304b41bbae24e85e1801900865ff3e`. Pas de substitution de modèle.
-- Installation explicite, initialisation Core ML, empreintes SHA-256 locales des fichiers et revérification avant chaque transcription. Le premier téléchargement fait confiance à HTTPS et au SDK ; ces empreintes locales ne sont pas une signature indépendante du fournisseur.
-- Mode d’inférence avec réseau désactivé dans FluidAudio. Traitement audio sur disque par le SDK pour limiter les buffers ; arrêt du moteur sur pression mémoire critique.
-- Horodatages réels des mots ; segmentation, conservation des pauses, Unicode, validation chronologique. Aucun alignement inventé.
-- Éditeur texte/temps avec écoute et recherche audio, scission à la position choisie, fusion, suppression, ajout, annuler/rétablir et sauvegarde locale.
-- Exports atomiques, confirmation d’écrasement, conservation des noms, ZIP avec collisions résolues, révélation Finder.
-- Historique JSON écrit atomiquement dans Application Support, sans duplication de l’audio ; bouton Nouveau lot pour conserver les résultats et libérer la file ; liaison d’un audio déplacé.
+## Fonctions
 
-La [CI native réussie](https://github.com/blackdozo563/Elpotranscribe/actions/runs/38561351957) exécute une vraie transcription depuis le moteur du DMG, la file, les exports dans deux dossiers, la reprise après erreur et l’annulation. Les contrôles de fermeture et de nettoyage passent également. Les tests de l’interface utilisent une simulation IPC ; la vérification graphique sur un Mac utilisateur reste nécessaire. Voir [docs/VALIDATION.md](docs/VALIDATION.md).
+Import de fichiers/dossiers, jusqu’à dix audios par lot, file séquentielle, annulation du processus d’inférence, historique local et reprise des erreurs. Horodatages issus des moteurs, segmentation et contrôle de chronologie ; aucun alignement réparti artificiellement sur la durée audio.
+
+Édition du texte et des temps, écoute, scission/fusion, annuler/rétablir, sauvegarde, exports atomiques avec confirmation avant écrasement. Export SRT dans le dossier de chaque source et ZIP des résultats du lot. L’historique conserve une référence à l’audio, sans en faire une copie ; un fichier déplacé peut être relié.
+
+Les poids sont téléchargés à la demande et restent locaux ; ils ne sont pas inclus dans le DMG. Les empreintes SHA-256 sont revérifiées avant transcription. Pour Whisper, le téléchargement est aussi comparé au SHA-256 publié par le dépôt du modèle via HTTPS. Les empreintes locales ne constituent pas une signature indépendante du fournisseur.
 
 ## Développement
 
-Node 24, npm, Rust 1.93.0. Les dépendances sont verrouillées dans `package-lock.json` et `Cargo.lock`.
+Node 24, npm, Rust 1.93.0. Utiliser le checkout existant, avec les dépendances verrouillées :
 
 ```sh
 npm ci
 npm run build
 npm test
 cargo test -p elpo-core --locked
+cargo clippy -p elpo-core --locked -- -D warnings
 npx playwright install chromium
 npm run test:browser
 ```
 
-Sur Linux cloud, si le répertoire personnel est en lecture seule : `export npm_config_cache=/workspace/.npm-cache CARGO_HOME=/workspace/.cargo RUSTUP_HOME=/workspace/.rustup PATH=/workspace/.cargo/bin:$PATH`. Chromium déjà installé : `ELPO_CHROMIUM_EXECUTABLE=/usr/bin/chromium npm run test:browser`.
+Sur Linux cloud avec un répertoire personnel en lecture seule :
 
-L’aperçu web `npm run dev` vérifie l’interface. Les opérations natives exigent l’application Tauri sur Mac ; aucun faux résultat de transcription n’est fourni.
+```sh
+export npm_config_cache=/workspace/.npm-cache
+export CARGO_HOME=/workspace/.cargo RUSTUP_HOME=/workspace/.rustup
+export PATH=/workspace/.cargo/bin:$PATH
+ELPO_CHROMIUM_EXECUTABLE=/usr/bin/chromium npm run test:browser
+```
 
-### Exécution macOS
+`npm run dev` démarre l’interface web pour les contrôles internes. Les tests navigateur simulent l’IPC ; ils ne prouvent pas l’inférence ou les dialogues macOS.
 
-Mac ARM64, macOS 14+, Xcode 26 (Swift 6.2+) et les outils de développement ci-dessus :
+### Application et DMG sur Mac
+
+Mac ARM64, macOS 14+, Xcode 26 / Swift 6.2+, CMake, Node et Rust. La CI utilise `macos-15` ARM64 avec Xcode 26.3 sélectionné explicitement.
 
 ```sh
 npm ci
@@ -50,41 +59,33 @@ swift test --package-path native/swift
 npm run tauri -- dev
 ```
 
-Les utilisateurs du futur DMG n’auront besoin ni de Python, ni de Node, ni de Homebrew. Python 3 n’est utilisé que par les scripts de validation et de benchmark des développeurs.
-
-### Compilation du DMG
+Pour produire et vérifier un DMG :
 
 ```sh
 npm run native:build
-python3 scripts/collect-licenses.py
 npm run tauri -- build --target aarch64-apple-darwin -- --locked
 bash scripts/validate-dmg.sh target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
 ```
 
-La CI `.github/workflows/release-macos.yml` utilise le runner ARM64 officiel `macos-26`, lance les contrôles portables, compile le pont Swift, teste Rust/Swift, produit le DMG puis exécute une **vraie inférence à partir du moteur contenu dans le DMG** avant de déposer l’artefact nommé `ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.0.0.dmg`.
+La validation monte le DMG, vérifie ARM64 et les signatures, exécute une vraie transcription avec Ultra et chaque modèle Whisper, produit des SRT, vérifie la file, les exports par dossier, l’annulation, le rejet des poids altérés, les métadonnées de versions et la double vérification dans les deux sens. Qwen est évalué séparément dans `qwen-validation.yml`.
 
-Le runner `macos-26` a effectivement compilé et validé cette version dans ce dépôt. Un tag `v1.0.0` ou le déclenchement manuel avec `publish=true` publie une préversion uniquement après succès des contrôles. Les résultats et les artefacts sont consultables dans [Actions](https://github.com/blackdozo563/Elpotranscribe/actions).
+Les utilisateurs du DMG n’ont besoin ni de Python, ni de Node, ni de Homebrew. La signature par défaut est ad hoc, non notariée. Vérifier la provenance et SHA-256 ; si nécessaire, utiliser l’autorisation ciblée de macOS, sans désactiver Gatekeeper globalement. Voir [docs/MACOS.md](docs/MACOS.md).
 
-La signature par défaut est ad hoc, non notariée. Pour une distribution Developer ID, fournir les secrets Apple appropriés dans GitHub Actions ; voir [docs/MACOS.md](docs/MACOS.md). Ne jamais incorporer les clés au code.
+## Utilisation
 
-## Utilisation du futur build validé
+1. Installer l’application depuis une [Release validée](https://github.com/blackdozo563/Elpotranscribe/releases).
+2. Télécharger le moteur souhaité dans Modèles IA.
+3. Importer les audios, choisir le moteur et la langue, puis lancer la file. Anglais couvre les variantes US/UK, sans garantie spécifique à chaque accent.
+4. Ouvrir un résultat pour l’éditer ou utiliser Double vérification avec un autre moteur installé.
+5. Enregistrer et exporter. Les exports automatiques conservent les fichiers existants ; l’éditeur permet de confirmer leur remplacement.
 
-1. Télécharger le DMG validé depuis [Releases](https://github.com/blackdozo563/Elpotranscribe/releases) ou depuis les artefacts d’une compilation Actions réussie. Le nom attendu est `ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.0.0.dmg`.
-2. Déplacer ELPOTRANSCRIBE.app vers Applications, puis l’ouvrir. Un build ad hoc peut être bloqué par Gatekeeper ; vérifier sa provenance et sa somme SHA-256, puis utiliser l’autorisation ciblée dans Réglages Système → Confidentialité et sécurité si macOS le propose. Ne pas désactiver Gatekeeper globalement.
-3. Dans Modèles IA, choisir Installer Parakeet Ultra. La connexion est nécessaire uniquement pour cette installation explicite. L’attente est indéterminée, sans pourcentage inventé.
-4. Importer jusqu’à dix audios, choisir une langue européenne, puis Tout transcrire. Les fichiers sont traités un à un.
-5. Activer « Enregistrer les SRT dans les dossiers d’origine » pour autoriser l’enregistrement automatique. Un fichier existant est conservé ; ouvrir le résultat pour confirmer son remplacement ou choisir Exporter vers… et le renommer.
-6. Ouvrir un résultat pour corriger le texte et les temps. Enregistrer les modifications conserve l’édition dans l’historique ; « SRT à côté de l’audio » met à jour l’export, avec confirmation si nécessaire. « Afficher dans le Finder » révèle le dernier SRT enregistré.
-7. « Tous les SRT en ZIP » rassemble uniquement les résultats terminés du lot courant. « Nouveau lot » les conserve dans l’historique et libère la file.
+## Limites
 
-## Limites actuelles
+- Les performances Turbo et la double vérification sur **M1/M2 physiques 8 Go** restent à mesurer. Un seul processus d’inférence tourne à la fois ; un contrôle de mémoire physique et un arrêt sur pression mémoire critique ne garantissent pas l’absence de swap ou d’épuisement mémoire.
+- Deux modèles peuvent faire la même erreur. Les divergences sont lexicales ; elles ne constituent ni une détection exhaustive d’erreurs, ni un jugement sur le bon texte. L’alignement mot à mot reste à évaluer contre une vérité terrain.
+- Ultra ne prend pas l’arabe en charge. Whisper le propose ; Qwen ASR le reconnaît mais son aligneur officiel ne le prend pas en charge dans cette intégration SRT.
+- MP3/WAV/M4A/AAC/FLAC/AIFF utilisent AVFoundation. OGG et WebM dépendent des codecs système ; les fichiers non décodables sont refusés. Aucun FFmpeg embarqué.
+- Les dialogues, Finder, l’installation sur Mac propre et les essais entièrement déconnectés restent à vérifier manuellement. Pas de sandbox App Store ni de signets de sécurité persistants.
+- Le vocabulaire personnalisé sert de référence pour la relecture, sans correction automatique. La fermeture interrompt le traitement ; le résultat principal déjà obtenu est conservé pour une vérification interrompue.
 
-- Inférence Ultra, file réelle, exports, backend Rust, signatures et DMG : contrôles natifs réussis en CI ARM64. Dialogues, Finder, lecture dans l’interface et installation sur un Mac propre : tests manuels encore nécessaires.
-- M2 8 Go : retour utilisateur positif sur la qualité de Parakeet Ultra le 14 octobre 2026. Protocole complet M1/M2 et mesures de performances encore à réaliser. La surveillance mémoire est une protection supplémentaire, pas une garantie contre tout épuisement mémoire.
-- L’arabe n’est pas pris en charge par le moteur Ultra de cette version ; les fonctions d’édition/export Unicode sont testées avec du texte arabe.
-- MP3/WAV/M4A/AAC/FLAC/AIFF passent par AVFoundation. OGG et WebM dépendent des codecs système ; les formats non décodables sont refusés, sans FFmpeg embarqué actuellement.
-- La liste de vocabulaire est une référence locale pour la relecture ; elle ne corrige pas automatiquement la transcription.
-- Pas encore de sandbox App Store ni de signets de sécurité persistants. L’application distribuée hors App Store utilise les permissions standard macOS et un accès Tauri limité aux fichiers importés.
-- La fermeture avec une tâche active interrompt celle-ci ; au lancement suivant, elle est marquée en erreur et peut être relancée.
-
-Voir [docs/VALIDATION.md](docs/VALIDATION.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) et [LICENSES.md](LICENSES.md).
+Voir [architecture](docs/ARCHITECTURE.md), [moteurs](docs/ADVANCED-ENGINES.md), [validation](docs/VALIDATION.md) et [licences](LICENSES.md).

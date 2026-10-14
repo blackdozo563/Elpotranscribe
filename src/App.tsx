@@ -58,7 +58,7 @@ const navigation = [
 const icons = [LayoutDashboard, Plus, History, ScanText, Boxes, Settings2];
 const localEngines = [
   { id: "ultra", name: "Parakeet Ultra", disabled: false },
-  { id: "whisper-turbo", name: "Whisper large-v3-turbo Q5", disabled: false },
+  { id: "whisper-turbo", name: "Whisper large-v3-turbo Q5_0", disabled: false },
   { id: "whisper-small", name: "Whisper Small", disabled: false },
   { id: "whisper-base", name: "Whisper Base", disabled: false },
   {
@@ -431,7 +431,7 @@ export default function App() {
                       >
                         <option value="ultra">Rapide — Parakeet Ultra</option>
                         <option value="whisper-turbo">
-                          Qualité — Whisper large-v3-turbo · Q5 · Metal
+                          Qualité — Whisper large-v3-turbo · Q5_0 · Metal
                         </option>
 
                         <option value="whisper-base">
@@ -764,7 +764,7 @@ export default function App() {
                   {[
                     {
                       id: "whisper-turbo",
-                      name: "Whisper large-v3-turbo Q5",
+                      name: "Whisper large-v3-turbo Q5_0",
                       size: "Taille indiquée par les fichiers téléchargés",
                       description:
                         "Option de qualité pour le français et l’anglais US/UK. Quantification Q5 pour limiter la mémoire. Performances M2 8 Go à mesurer.",
@@ -779,7 +779,7 @@ export default function App() {
                       id: "whisper-small",
                       name: "Whisper Small",
                       size: "466 Mio",
-                      description: "Modèle multilingue plus précis, plus lent.",
+                      description: "Alternative multilingue plus volumineuse que Base.",
                     },
                   ].map((model) => (
                     <section className="panel model-card" key={model.id}>
@@ -851,7 +851,7 @@ export default function App() {
                 <>
                   <PageTitle
                     eyebrow="CHAQUE MOT COMPTE"
-                    title="Vérification IA"
+                    title="Double vérification"
                     text="Gardez toujours le dernier mot sur vos transcriptions."
                   />
                   <VerificationPanel

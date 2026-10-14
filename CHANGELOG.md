@@ -2,7 +2,10 @@
 
 ## 1.1.0 — développement, non publiée
 
-- Intégration native whisper.cpp Base/Small avec Metal embarqué, modèles à la demande et contrôle d’intégrité.
+- Whisper Base/Small et large-v3-turbo Q5_0 via whisper.cpp/Metal, modèles téléchargés à la demande et contrôle SHA-256.
+- Double vérification locale séquentielle, moteurs inversables et propositions annulables conservant les temps du principal.
+- Notifications de versions des modèles, téléchargement explicite et activation atomique après vérification.
+- Suppression de Gemini ; aucun compte cloud requis.
 - Pont Qwen 0.6B/1.7B 4-bit et alignement sans interpolation, non activé avant validation native.
 - Validation du nouveau DMG et tests physiques M1/M2 8 Go en attente.
 
