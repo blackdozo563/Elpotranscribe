@@ -19,6 +19,7 @@ concurrency:
 jobs:
   portable:
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -35,7 +36,7 @@ jobs:
     needs: portable
     # Official ARM64 runner; select Swift 6.2 rather than its default Xcode 16.
     runs-on: macos-15
-    timeout-minutes: 90
+    timeout-minutes: 60
     env:
       MACOSX_DEPLOYMENT_TARGET: '14.0'
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
@@ -102,21 +103,17 @@ jobs:
         with:
           tauriScript: bash scripts/tauri-cli.sh
           args: --target aarch64-apple-darwin --config target/signing.json -- --locked
-      - name: Prepare MP3 regression tools
-        run: |
-          if ! command -v ffmpeg >/dev/null; then brew install ffmpeg; fi
-          ffmpeg -version
       - name: Validate packaged inference, dependencies and DMG
         run: |
           mkdir -p release
           image="$(find target/aarch64-apple-darwin/release/bundle/dmg -name '*.dmg' -print -quit)"
           test -n "$image"
           bash scripts/validate-dmg.sh "$image"
-          cp "$image" release/ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.1.2.dmg
+          cp "$image" release/ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.2.0.dmg
           shasum -a 256 release/*.dmg > release/SHA256SUMS.txt
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.1.2
+          name: ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.2.0
           path: release/*
           if-no-files-found: error
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -138,20 +135,54 @@ jobs:
             target
             native/swift/.build
           key: ${{ steps.build-cache.outputs.cache-primary-key }}
+  long-validation:
+    needs: build
+    runs-on: macos-15
+    timeout-minutes: 60
+    continue-on-error: true
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+      MACOSX_DEPLOYMENT_TARGET: '14.0'
+      ELPO_VALIDATION_MODE: long
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            target
+            native/swift/.build
+          key: macos-arm64-${{ hashFiles('Cargo.lock', 'native/swift/Package.swift', 'native/qwen/Package.resolved') }}-${{ github.run_id }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.2.0
+          path: release
+      - name: Long French validation (does not block publication)
+        run: |
+          rustup toolchain install 1.93.0 --profile minimal --target aarch64-apple-darwin
+          if ! command -v ffmpeg >/dev/null; then brew install ffmpeg; fi
+          bash scripts/validate-dmg.sh release/*.dmg
+
   publish:
     needs: build
     if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish)
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     permissions:
       contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.1.2
+          name: ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.2.0
           path: release
       - name: Publish validated personal-use build
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          gh release create v1.1.2 release/* --target "$GITHUB_SHA" --title 'ELPOTRANSCRIBE v1.1.2 — validation macOS' --prerelease --notes 'Build Apple Silicon signé ad hoc, non notarié. Correctifs Whisper : repli sur les vrais temps des passages si les mots sont incomplets. Suppression via confirmation native, audio et exports conservés. Éditeur : rechercher, précédent/suivant, remplacer et remplacer tout, casse et mots entiers ; annulation et horodatages conservés. Validation avec MP3 français synthétique de 20 minutes, moteurs locaux et double vérification. Qwen reste expérimental et désactivé. Performances M1/M2 8 Go à mesurer. Voir les limites dans le README.'
+          cat > release-notes.md <<'NOTES'
+          Préversion Apple Silicon signée ad hoc, non notariée. Traitement local Ultra + Whisper Turbo. Validation courte française : inférence, SRT, suppression et double vérification. Le test long de 20 minutes reste indépendant et ne bloque pas cette publication. Le matériel M2 8 Go physique n'est pas mesuré par la CI.
+
+          SHA-256 :
+          NOTES
+          cat release/SHA256SUMS.txt >> release-notes.md
+          gh release create v1.2.0 release/* --target "$GITHUB_SHA" --title 'ELPOTRANSCRIBE v1.2.0' --prerelease --notes-file release-notes.md

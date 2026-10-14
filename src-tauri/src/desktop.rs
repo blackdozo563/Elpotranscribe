@@ -1164,7 +1164,7 @@ mod integration_tests {
         let root = tempfile::tempdir().unwrap();
         std::os::unix::fs::symlink(models, root.path().join("models")).unwrap();
         let settings = Settings {
-            language: "en".into(),
+            language: std::env::var("ELPO_TEST_LANGUAGE").unwrap_or_else(|_| "en".into()),
             ..Settings::default()
         };
         let source: Job = serde_json::from_value(serde_json::json!({
@@ -1189,6 +1189,7 @@ mod integration_tests {
             let mut job = source.clone();
             job.id = uuid::Uuid::new_v4().to_string();
             job.engine = primary.into();
+            job.language = settings.language.clone();
             job.status = "transcribing".into();
             job.cues.clear();
             job.verification_status = Some("processing".into());
@@ -1219,10 +1220,9 @@ mod integration_tests {
                 serde_json::to_value(&result.cues).unwrap(),
                 serde_json::to_value(&review.reference_cues).unwrap()
             );
-            assert!(core::srt(&result.cues)
-                .unwrap()
-                .to_lowercase()
-                .contains("country"));
+            assert!(core::srt(&result.cues).unwrap().to_lowercase().contains(
+                &std::env::var("ELPO_TEST_EXPECTED").unwrap_or_else(|_| "country".into())
+            ));
             assert_eq!(snapshot.jobs[0].cues[0].text, "Original preserved");
             assert!(state.data.runtime.lock().unwrap().child.is_none());
             let saved: Store =
@@ -1328,7 +1328,7 @@ mod integration_tests {
             archived: false,
         };
         let mut settings = Settings::default();
-        settings.language = "en".into();
+        settings.language = std::env::var("ELPO_TEST_LANGUAGE").unwrap_or_else(|_| "en".into());
         settings.engine = std::env::var("ELPO_TEST_ENGINE").unwrap_or_else(|_| default_engine());
         settings.auto_save = true;
         let state = AppState {
@@ -1362,7 +1362,9 @@ mod integration_tests {
             let output = audio.with_extension("srt");
             let data = fs::read_to_string(&output).unwrap();
             assert!(data.contains("-->"));
-            assert!(data.to_lowercase().contains("country"));
+            assert!(data.to_lowercase().contains(
+                &std::env::var("ELPO_TEST_EXPECTED").unwrap_or_else(|_| "country".into())
+            ));
             assert_eq!(fs::read(audio).unwrap(), fs::read(&fixture).unwrap());
         }
         let jobs = &snapshot.jobs[1..];

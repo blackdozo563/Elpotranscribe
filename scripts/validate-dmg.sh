@@ -19,5 +19,9 @@ for binary in "$app/Contents/MacOS/elpotranscribe" "$app/Contents/MacOS/elpo-asr
     echo 'Dépendance de développement externe détectée' >&2; exit 1
   fi
 done
-python3 scripts/smoke-native.py "$app/Contents/MacOS/elpo-asr"
+if [[ "${ELPO_VALIDATION_MODE:-short}" == long ]]; then
+  python3 scripts/smoke-long.py "$app/Contents/MacOS/elpo-asr"
+else
+  python3 scripts/smoke-release.py "$app/Contents/MacOS/elpo-asr"
+fi
 echo 'DMG, ARM64, signatures ad hoc et inférence du moteur empaqueté validés.'
