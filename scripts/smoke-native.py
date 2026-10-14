@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Real inference integration check. No mocked transcript. Requires the packaged helper on ARM64 macOS."""
 import hashlib,json,os,pathlib,re,subprocess,sys,tempfile,time,urllib.request
+def failure_hook(kind,value,traceback):
+    message=(str(value) or repr(value)).replace('%','%25').replace('\r','%0D').replace('\n','%0A')
+    print('::error title=Native inference validation::'+message,flush=True)
+    sys.__excepthook__(kind,value,traceback)
+sys.excepthook=failure_hook
 root=pathlib.Path(__file__).resolve().parent.parent
 helper=pathlib.Path(sys.argv[1] if len(sys.argv)>1 else root/'src-tauri/binaries/elpo-asr-aarch64-apple-darwin')
 manifest=json.loads((root/'fixtures/jfk.json').read_text())
@@ -32,4 +37,10 @@ with tempfile.TemporaryDirectory(prefix='elpo-smoke-') as temporary:
     for word in ['country','ask','you']: assert word in text, f'Missing expected word: {word}'
     output=root/'target/smoke-result.json';output.write_text(json.dumps(result,ensure_ascii=False))
     subprocess.run(['cargo','run','--locked','-p','elpo-core','--example','validate_transcript','--',str(output),str(root/'target/smoke-result.srt')],cwd=root,check=True)
-    print('Real Parakeet Ultra inference and SRT validation passed:',len(result['words']),'timestamped words')
+    test_env=os.environ.copy()
+    test_env.update({'ELPO_TEST_HELPER':str(helper.resolve()),'ELPO_TEST_MODELS':str(models.resolve()),'ELPO_TEST_AUDIO':str(audio)})
+    queued=subprocess.run(['cargo','test','--locked','--release','-p','elpotranscribe','--target','aarch64-apple-darwin','--','--ignored','--nocapture'],cwd=root,env=test_env,text=True,capture_output=True)
+    if queued.returncode or not re.search(r'test result: ok\. [1-9]\d* passed',queued.stdout):
+        raise RuntimeError('Native queue integration failed: '+(queued.stderr+'\n'+queued.stdout)[-5000:])
+    print(queued.stdout)
+    print('Real Parakeet Ultra inference, native queue, per-folder SRT and error recovery passed:',len(result['words']),'timestamped words')

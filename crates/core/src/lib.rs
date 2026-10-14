@@ -181,7 +181,7 @@ pub fn segment(words: &[Word], settings: &SubtitleSettings) -> Result<Vec<Cue>> 
     let mut cues: Vec<Cue> = Vec::new();
     let mut group: Vec<&Word> = Vec::new();
     let flush = |g: &mut Vec<&Word>, out: &mut Vec<Cue>| {
-        if let (Some(first), Some(last)) = (g.first(), g.last()) {
+        if let Some(first) = g.first() {
             let mut lines = vec![String::new()];
             for w in g.iter() {
                 let line = lines.last_mut().unwrap();
@@ -198,15 +198,16 @@ pub fn segment(words: &[Word], settings: &SubtitleSettings) -> Result<Vec<Cue>> 
             }
             out.push(Cue {
                 start_ms: first.start_ms,
-                end_ms: last.end_ms,
+                end_ms: g.iter().map(|w| w.end_ms).max().unwrap(),
                 text: lines.join("\n"),
             });
         }
         g.clear();
     };
-    let mut previous = 0;
+    let mut previous_start = 0;
+    let mut group_end = 0;
     for w in words {
-        if w.start_ms < previous || w.end_ms <= w.start_ms || w.text.trim().is_empty() {
+        if w.start_ms < previous_start || w.end_ms <= w.start_ms || w.text.trim().is_empty() {
             return Err(Error::Invalid(
                 "Horodatages du moteur invalides ; aucune synchronisation inventée".into(),
             ));
@@ -217,19 +218,14 @@ pub fn segment(words: &[Word], settings: &SubtitleSettings) -> Result<Vec<Cue>> 
             ));
         }
         if let Some(first) = group.first() {
-            let candidate = group
-                .iter()
-                .map(|x| x.text.chars().count() + 1)
-                .sum::<usize>()
-                + w.text.chars().count();
             let mut line = 0;
             let mut count = 1;
-            for x in group
+            for text in group
                 .iter()
                 .map(|x| x.text.as_str())
                 .chain(std::iter::once(w.text.as_str()))
             {
-                let n = x.chars().count();
+                let n = text.chars().count();
                 if line > 0 && line + 1 + n > settings.line_length {
                     count += 1;
                     line = n;
@@ -237,19 +233,28 @@ pub fn segment(words: &[Word], settings: &SubtitleSettings) -> Result<Vec<Cue>> 
                     line += n + usize::from(line > 0);
                 }
             }
-            if count > settings.max_lines
-                || candidate > settings.line_length * settings.max_lines
-                || w.end_ms - first.start_ms > settings.max_duration_ms
-                || w.start_ms - previous > 800
+            let over_lines = count > settings.max_lines;
+            let sentence = group
+                .iter()
+                .any(|word| word.text.ends_with(['.', '!', '?', '؟']));
+            // TDT may emit consecutive words on the same encoder frame. Keep
+            // their actual spans in one cue; do not shift or invent timestamps.
+            let can_split = w.start_ms >= group_end;
+            if can_split
+                && (over_lines
+                    || sentence
+                    || w.end_ms.saturating_sub(first.start_ms) > settings.max_duration_ms
+                    || w.start_ms.saturating_sub(group_end) > 800)
             {
                 flush(&mut group, &mut cues);
+                group_end = 0;
+            } else if over_lines {
+                return Err(Error::Invalid("Zone de mots superposés trop longue : augmentez la longueur de ligne ; aucun temps artificiel créé".into()));
             }
         }
         group.push(w);
-        previous = w.end_ms;
-        if w.text.ends_with(['.', '!', '?', '؟']) {
-            flush(&mut group, &mut cues);
-        }
+        previous_start = w.start_ms;
+        group_end = group_end.max(w.end_ms);
     }
     flush(&mut group, &mut cues);
     validate(&cues)?;
@@ -456,5 +461,30 @@ mod tests {
         let data = vtt(&[c]).unwrap();
         assert!(data.contains("Bonjour, Paris."));
         assert!(data.contains("00:00:01.001"));
+    }
+    #[test]
+    fn overlapping_model_words_keep_real_outer_bounds() {
+        let words = vec![
+            Word {
+                start_ms: 100,
+                end_ms: 300,
+                text: "Bonjour.".into(),
+            },
+            Word {
+                start_ms: 250,
+                end_ms: 500,
+                text: "Paris".into(),
+            },
+            Word {
+                start_ms: 900,
+                end_ms: 1100,
+                text: "encore.".into(),
+            },
+        ];
+        let cues = segment(&words, &SubtitleSettings::default()).unwrap();
+        assert_eq!(cues.len(), 2);
+        assert_eq!((cues[0].start_ms, cues[0].end_ms), (100, 500));
+        assert_eq!(cues[0].text, "Bonjour. Paris");
+        assert_eq!(cues[1].start_ms, 900);
     }
 }

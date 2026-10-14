@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke, convertFileSrc, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   AudioLines,
   LayoutDashboard,
@@ -905,6 +906,31 @@ function Editor({
     };
     window.addEventListener("beforeunload", before);
     return () => window.removeEventListener("beforeunload", before);
+  }, [dirty]);
+  useEffect(() => {
+    if (!(isTauri() || "__TAURI_INTERNALS__" in window)) return;
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    getCurrentWindow()
+      .onCloseRequested(async (event) => {
+        if (!dirty) return;
+        event.preventDefault();
+        try {
+          if (await invoke<boolean>("confirm_discard"))
+            await getCurrentWindow().destroy();
+        } catch (error) {
+          setError(String(error));
+        }
+      })
+      .then((fn) => {
+        if (disposed) fn();
+        else unlisten = fn;
+      })
+      .catch((error) => setError(String(error)));
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
   }, [dirty]);
   const active = state.present.findIndex(
     (c) => c.startMs <= position && c.endMs > position,

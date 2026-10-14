@@ -59,7 +59,12 @@ jobs:
           restore-keys: macos-arm64-${{ hashFiles('Cargo.lock', 'native/swift/Package.swift') }}-
       - run: npm ci
       - run: npm run native:build
-      - run: swift test --package-path native/swift
+      - name: Run and verify Swift test execution
+        run: |
+          set -euo pipefail
+          mkdir -p target
+          swift test --package-path native/swift 2>&1 | tee target/swift-tests.log
+          python3 scripts/verify-swift-tests.py target/swift-tests.log
       - run: cargo test -p elpo-core --locked
       - run: npm run check && npm test
       - name: Prepare optional Developer ID signing

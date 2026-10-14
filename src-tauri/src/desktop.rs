@@ -124,7 +124,7 @@ impl AppState {
             let write = child
                 .stdin
                 .take()
-                .ok_or("Entrée du moteur absente")
+                .ok_or_else(|| "Entrée du moteur absente".to_string())
                 .and_then(|mut stdin| stdin.write_all(request.to_string().as_bytes()).map_err(err));
             if let Err(e) = write {
                 let _ = child.kill();
@@ -179,6 +179,26 @@ impl AppState {
             platform: self.data.platform.clone(),
         })
     }
+    fn cancel(&self, id: &str) -> Result<(), String> {
+        // Publish cancellation while holding the process lock, before killing.
+        // Otherwise the worker could record a failure before the cancel state.
+        let mut runtime = self.data.runtime.lock().map_err(err)?;
+        self.modify(id, |j| {
+            if ["pending", "transcribing"].contains(&j.status.as_str()) {
+                j.status = "cancelled".into();
+            }
+        })?;
+        if runtime.active.as_deref() == Some(id) {
+            if let Some(child) = runtime.child.as_mut() {
+                if let Err(error) = child.kill() {
+                    if child.try_wait().map_err(err)?.is_none() {
+                        return Err(err(error));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
     fn reserve(&self) -> Result<(), String> {
         let mut r = self.data.runtime.lock().map_err(err)?;
         if r.busy {
@@ -202,6 +222,19 @@ fn now() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
+}
+#[tauri::command]
+async fn confirm_discard() -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        rfd::MessageDialog::new()
+            .set_title("Modifications non enregistrées")
+            .set_description("Quitter sans enregistrer les modifications des sous-titres ?")
+            .set_buttons(rfd::MessageButtons::YesNo)
+            .show()
+            == rfd::MessageDialogResult::Yes
+    })
+    .await
+    .map_err(err)
 }
 #[tauri::command]
 fn snapshot(state: State<'_, AppState>) -> Result<Snapshot, String> {
@@ -406,19 +439,7 @@ fn start_batch(state: State<'_, AppState>) -> Result<(), String> {
 }
 #[tauri::command]
 fn cancel_job(state: State<'_, AppState>, id: String) -> Result<(), String> {
-    {
-        let mut r = state.data.runtime.lock().map_err(err)?;
-        if r.active.as_ref() == Some(&id) {
-            if let Some(child) = r.child.as_mut() {
-                child.kill().map_err(err)?;
-            }
-        }
-    }
-    state.modify(&id, |j| {
-        if ["pending", "transcribing"].contains(&j.status.as_str()) {
-            j.status = "cancelled".into();
-        }
-    })
+    state.cancel(&id)
 }
 #[tauri::command]
 fn retry_job(state: State<'_, AppState>, id: String) -> Result<(), String> {
@@ -642,6 +663,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             snapshot,
+            confirm_discard,
             import_files,
             install_model,
             remove_model,
@@ -659,4 +681,113 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("Impossible de démarrer ELPOTRANSCRIBE");
+}
+
+#[cfg(test)]
+mod integration_tests {
+    use super::*;
+    // This opt-in test uses actual Core ML inference. It is never counted as a
+    // passing unit test when models or the ARM64 macOS runtime are unavailable.
+    #[test]
+    #[ignore = "Requires real models, audio and packaged helper; run from smoke-native.py"]
+    fn real_queue_recovers_and_exports_to_each_source_folder() {
+        let helper =
+            PathBuf::from(std::env::var("ELPO_TEST_HELPER").expect("packaged helper required"));
+        let models =
+            PathBuf::from(std::env::var("ELPO_TEST_MODELS").expect("installed models required"));
+        let fixture =
+            PathBuf::from(std::env::var("ELPO_TEST_AUDIO").expect("real spoken audio required"));
+        let root = tempfile::tempdir().unwrap();
+        std::os::unix::fs::symlink(models, root.path().join("models")).unwrap();
+        let first = root.path().join("Interview Français");
+        let second = root.path().join("Autre dossier");
+        fs::create_dir_all(&first).unwrap();
+        fs::create_dir_all(&second).unwrap();
+        let a = first.join("Été.final.v2.wav");
+        let b = second.join("Été.final.v2.wav");
+        fs::copy(&fixture, &a).unwrap();
+        fs::copy(&fixture, &b).unwrap();
+        let invalid = first.join("corrompu.wav");
+        fs::write(&invalid, b"not a valid audio stream").unwrap();
+        let make = |source: PathBuf| Job {
+            id: uuid::Uuid::new_v4().to_string(),
+            name: source.file_name().unwrap().to_string_lossy().into(),
+            size: fs::metadata(&source).unwrap().len(),
+            source,
+            duration_ms: 11000,
+            status: "pending".into(),
+            cues: vec![],
+            error: None,
+            export_path: None,
+            dirty: false,
+            created_at: now(),
+            language: "en".into(),
+            engine: "Parakeet Ultra · Core ML".into(),
+            archived: false,
+        };
+        let mut settings = Settings::default();
+        settings.language = "en".into();
+        settings.auto_save = true;
+        let state = AppState {
+            data: Arc::new(Inner {
+                store: Mutex::new(Store {
+                    jobs: vec![make(invalid), make(a.clone()), make(b.clone())],
+                    settings,
+                }),
+                runtime: Mutex::new(Runtime::default()),
+                root: root.path().into(),
+                helper,
+                platform: "Native CI integration test".into(),
+            }),
+        };
+        state.reserve().unwrap();
+        process_queue(state.clone());
+        let snapshot = state.snapshot().unwrap();
+        assert!(!snapshot.busy);
+        assert_eq!(snapshot.jobs[0].status, "failed");
+        assert_eq!(snapshot.jobs[1].status, "completed");
+        assert_eq!(snapshot.jobs[2].status, "completed");
+        for audio in [&a, &b] {
+            let output = audio.with_extension("srt");
+            let data = fs::read_to_string(&output).unwrap();
+            assert!(data.contains("-->"));
+            assert!(data.to_lowercase().contains("country"));
+            assert_eq!(fs::read(audio).unwrap(), fs::read(&fixture).unwrap());
+        }
+        let jobs = &snapshot.jobs[1..];
+        let zip = core::zip_srt(
+            &jobs
+                .iter()
+                .map(|j| (j.source.clone(), j.cues.clone()))
+                .collect::<Vec<_>>(),
+        )
+        .unwrap();
+        assert!(!zip.is_empty());
+        assert!(state.data.runtime.lock().unwrap().child.is_none());
+        // Exercise the same cancellation path as the UI against a real helper.
+        let cancelled = make(a.clone());
+        let id = cancelled.id.clone();
+        {
+            let mut store = state.data.store.lock().unwrap();
+            store.jobs = vec![cancelled];
+        }
+        state.reserve().unwrap();
+        let worker_state = state.clone();
+        let worker = std::thread::spawn(move || process_queue(worker_state));
+        let started = std::time::Instant::now();
+        loop {
+            if state.data.runtime.lock().unwrap().active.as_deref() == Some(id.as_str()) {
+                break;
+            }
+            assert!(
+                started.elapsed() < Duration::from_secs(30),
+                "real helper never became active"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        state.cancel(&id).unwrap();
+        worker.join().unwrap();
+        assert_eq!(state.snapshot().unwrap().jobs[0].status, "cancelled");
+        assert!(state.data.runtime.lock().unwrap().child.is_none());
+    }
 }
