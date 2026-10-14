@@ -28,7 +28,18 @@ cd "$repository"
 products=target/qwen-xcode/Build/Products/Release
 mkdir -p src-tauri/binaries src-tauri/resources/qwen
 cp "$products/elpo-qwen" src-tauri/binaries/elpo-qwen-aarch64-apple-darwin
-codesign --force --sign - src-tauri/binaries/elpo-qwen-aarch64-apple-darwin
+helper=src-tauri/binaries/elpo-qwen-aarch64-apple-darwin
+mkdir -p src-tauri/resources/qwen-runtime src-tauri/Frameworks
+xcrun swift-stdlib-tool --copy --platform macosx --scan-executable "$helper" --destination src-tauri/resources/qwen-runtime
+if ! otool -l "$helper" | grep -Fq '@executable_path/../Frameworks'; then
+  install_name_tool -add_rpath '@executable_path/../Frameworks' "$helper"
+fi
+for library in src-tauri/resources/qwen-runtime/*.dylib; do
+  test -f "$library" || continue
+  codesign --force --sign - "$library"
+  cp "$library" src-tauri/Frameworks/
+done
+codesign --force --sign - "$helper"
 # MLX's compiled Metal resource must travel with the app, never depend on Xcode.
 shader="$(find "$products" -name default.metallib -print -quit)"
 test -n "$shader"
