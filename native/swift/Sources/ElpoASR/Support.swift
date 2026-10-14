@@ -2,7 +2,7 @@ import Foundation
 import AVFoundation
 import CryptoKit
 
-struct Request: Decodable { let action: String; let models: String?; let source: String?; let language: String?; let engine: String? }
+struct Request: Decodable { let action: String; let models: String?; let source: String?; let language: String?; let engine: String?; let consent: Bool? }
 struct Word: Codable { let startMs: UInt64; let endMs: UInt64; let text: String }
 struct Failure: LocalizedError { let message: String; var errorDescription: String? { message } }
 struct Manifest: Codable { let sdk: String; let files: [String: String] }

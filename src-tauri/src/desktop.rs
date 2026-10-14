@@ -107,6 +107,9 @@ impl AppState {
         self.data.root.join("models")
     }
     fn installed(&self, engine: &str) -> bool {
+        if engine == "gemini" {
+            return self.data.root.join("gemini-key-configured").is_file();
+        }
         self.model_marker(engine).is_file()
     }
     fn model_marker(&self, engine: &str) -> PathBuf {
@@ -202,7 +205,7 @@ impl AppState {
             settings: s.settings.clone(),
             busy,
             model_installed: self.installed(&s.settings.engine),
-            installed_models: ["ultra", "whisper-base", "whisper-small"]
+            installed_models: ["ultra", "whisper-base", "whisper-small", "gemini"]
                 .into_iter()
                 .filter(|e| self.installed(e))
                 .map(str::to_owned)
@@ -268,7 +271,7 @@ fn default_engine() -> String {
     "ultra".into()
 }
 fn check_engine(engine: &str) -> Result<(), String> {
-    if ["ultra", "whisper-base", "whisper-small"].contains(&engine) {
+    if ["ultra", "whisper-base", "whisper-small", "gemini"].contains(&engine) {
         Ok(())
     } else {
         Err("Moteur non pris en charge".into())
@@ -292,6 +295,35 @@ async fn confirm_discard() -> Result<bool, String> {
     })
     .await
     .map_err(err)
+}
+#[tauri::command]
+async fn gemini_config(state: State<'_, AppState>, action: String) -> Result<Snapshot, String> {
+    if !["save", "test", "remove"].contains(&action.as_str()) {
+        return Err("Action Gemini inconnue".into());
+    }
+    let state = state.inner().clone();
+    state.reserve()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = (|| {
+            let value = state.helper(
+                serde_json::json!({"action": format!("gemini-key-{action}")}),
+                None,
+            )?;
+            let marker = state.data.root.join("gemini-key-configured");
+            if value["stored"].as_bool() == Some(true) {
+                core::atomic_save(&marker, b"Keychain", true).map_err(err)?;
+            }
+            if action == "remove" && marker.exists() {
+                fs::remove_file(marker).map_err(err)?;
+            }
+            Ok::<(), String>(())
+        })();
+        state.release();
+        result?;
+        state.snapshot()
+    })
+    .await
+    .map_err(err)?
 }
 #[tauri::command]
 fn snapshot(state: State<'_, AppState>) -> Result<Snapshot, String> {
@@ -399,6 +431,9 @@ async fn install_model(
 ) -> Result<Snapshot, String> {
     let engine = engine.unwrap_or_else(default_engine);
     check_engine(&engine)?;
+    if engine == "gemini" {
+        return Err("Configurez la clé Gemini dans Paramètres".into());
+    }
     let state = state.inner().clone();
     state.reserve()?;
     tauri::async_runtime::spawn_blocking(move || {
@@ -420,6 +455,9 @@ async fn remove_model(
 ) -> Result<Snapshot, String> {
     let engine = engine.unwrap_or_else(default_engine);
     check_engine(&engine)?;
+    if engine == "gemini" {
+        return Err("Supprimez la clé Gemini dans Paramètres".into());
+    }
     let state = state.inner().clone();
     state.reserve()?;
     let result = (|| {
@@ -442,7 +480,7 @@ async fn remove_model(
     result?;
     state.snapshot()
 }
-fn process_queue(state: AppState) {
+fn process_queue(state: AppState, cloud_consent: bool) {
     loop {
         if state
             .data
@@ -477,7 +515,10 @@ fn process_queue(state: AppState) {
             _ => break,
         };
         let result = (|| -> Result<Vec<Cue>, String> {
-            let result=state.helper(serde_json::json!({"action":"transcribe","models":state.models(),"source":job.source,"language":settings.language,"engine":settings.engine}),Some(&job.id))?;
+            if settings.engine == "gemini" && !cloud_consent {
+                return Err("Envoi cloud non autorisé".into());
+            }
+            let result=state.helper(serde_json::json!({"action":"transcribe","models":state.models(),"source":job.source,"language":settings.language,"engine":settings.engine,"consent": cloud_consent}),Some(&job.id))?;
             let words: Vec<Word> = serde_json::from_value(result["words"].clone()).map_err(err)?;
             core::segment(&words, &settings.subtitles).map_err(err)
         })();
@@ -521,6 +562,7 @@ fn process_queue(state: AppState) {
 }
 #[tauri::command]
 fn start_batch(state: State<'_, AppState>) -> Result<(), String> {
+    state.reserve()?;
     let engine = state
         .data
         .store
@@ -530,11 +572,24 @@ fn start_batch(state: State<'_, AppState>) -> Result<(), String> {
         .engine
         .clone();
     if !state.installed(&engine) {
-        return Err("Installez le moteur choisi dans Modèles IA".into());
+        state.release();
+        return Err(
+            "Installez le moteur choisi dans Modèles IA, ou configurez sa clé dans Paramètres"
+                .into(),
+        );
     }
-    state.reserve()?;
+    if engine == "gemini" {
+        let accepted = rfd::MessageDialog::new()
+            .set_title("Envoyer ce lot à Google Gemini ?")
+            .set_description("Les audios en attente quitteront ce Mac et seront envoyés à Google. L’API peut être payante, indépendamment de Google AI Pro. Maximum 30 minutes par fichier avec horodatages. L’annulation locale ne garantit pas l’arrêt d’une requête déjà reçue par Google. Autoriser l’envoi de ce lot ?")
+            .set_buttons(rfd::MessageButtons::YesNo).show() == rfd::MessageDialogResult::Yes;
+        if !accepted {
+            state.release();
+            return Ok(());
+        }
+    }
     let state = state.inner().clone();
-    std::thread::spawn(move || process_queue(state));
+    std::thread::spawn(move || process_queue(state, engine == "gemini"));
     Ok(())
 }
 #[tauri::command]
@@ -584,6 +639,10 @@ fn archive_completed(state: State<'_, AppState>) -> Result<(), String> {
 }
 #[tauri::command]
 fn save_settings(state: State<'_, AppState>, settings: Settings) -> Result<(), String> {
+    let runtime = state.data.runtime.lock().map_err(err)?;
+    if runtime.busy {
+        return Err("Attendez la fin de l’opération pour changer les réglages".into());
+    }
     check_engine(&settings.engine)?;
     settings.subtitles.validate().map_err(err)?;
     if !["auto", "fr", "en", "es", "de", "it", "pt", "ar"].contains(&settings.language.as_str())
@@ -775,6 +834,7 @@ pub fn run() {
             retry_job,
             remove_job,
             save_settings,
+            gemini_config,
             archive_completed,
             save_edit,
             export_job,
@@ -855,7 +915,7 @@ mod integration_tests {
             }),
         };
         state.reserve().unwrap();
-        process_queue(state.clone());
+        process_queue(state.clone(), false);
         let snapshot = state.snapshot().unwrap();
         assert!(!snapshot.busy);
         assert_eq!(snapshot.jobs[0].status, "failed");
@@ -895,7 +955,7 @@ mod integration_tests {
         }
         state.reserve().unwrap();
         let worker_state = state.clone();
-        let worker = std::thread::spawn(move || process_queue(worker_state));
+        let worker = std::thread::spawn(move || process_queue(worker_state, false));
         let started = std::time::Instant::now();
         loop {
             if state.data.runtime.lock().unwrap().active.as_deref() == Some(id.as_str()) {
@@ -919,7 +979,7 @@ mod integration_tests {
         }
         state.reserve().unwrap();
         let exiting = state.clone();
-        let worker = std::thread::spawn(move || process_queue(exiting));
+        let worker = std::thread::spawn(move || process_queue(exiting, false));
         let started = std::time::Instant::now();
         let temporary_path = loop {
             let runtime = state.data.runtime.lock().unwrap();

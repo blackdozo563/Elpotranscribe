@@ -197,7 +197,7 @@ export default function App() {
             <AudioLines size={16} />
           </span>
           <div>
-            ELPOTRANSCRIBE<small>Version 1.0.0 · Développement</small>
+            ELPOTRANSCRIBE<small>Version 1.1.0 · Préversion</small>
           </div>
         </div>
       </aside>
@@ -293,18 +293,22 @@ export default function App() {
                         <Boxes />
                       </span>
                       <section>
-                        <small>Moteur local</small>
+                        <small>{data.settings.engine === "gemini" ? "Moteur cloud" : "Moteur local"}</small>
                         <strong className="stat-text">
                           {data.settings.engine === "ultra"
                             ? "Parakeet Ultra"
                             : data.settings.engine === "whisper-base"
                               ? "Whisper Base"
-                              : "Whisper Small"}
+                              : data.settings.engine === "gemini"
+                                ? "Gemini Transcribe"
+                                : "Whisper Small"}
                         </strong>
                         <small>
                           {data.modelInstalled
-                            ? "Installé · local"
-                            : "À installer dans Modèles IA"}
+                            ? data.settings.engine === "gemini"
+                              ? "Cloud · clé configurée"
+                              : "Installé · local"
+                            : data.settings.engine === "gemini" ? "Clé requise dans Paramètres" : "À installer dans Modèles IA"}
                         </small>
                       </section>
                     </div>
@@ -373,6 +377,9 @@ export default function App() {
                         }
                       >
                         <option value="ultra">Rapide — Parakeet Ultra</option>
+                        <option value="gemini">
+                          Gemini Cloud — En ligne · clé requise
+                        </option>
                         <option value="whisper-base">
                           Secours léger — Whisper Base · Metal
                         </option>
@@ -736,8 +743,8 @@ export default function App() {
                   <div className="panel info-panel">
                     <h3>Intégrations avancées en attente</h3>
                     <p>
-                      Qwen3-ASR 0.6B / 1.7B et Gemini ne sont pas implémentés
-                      dans cette version de développement. Ils ne sont pas
+                      Qwen3-ASR 0.6B / 1.7B ne sont pas encore activés dans
+                      cette version de développement. Ils ne sont pas
                       sélectionnables. Les validations sur M1 et M2 8 Go restent
                       nécessaires.
                     </p>
@@ -781,12 +788,78 @@ export default function App() {
                       setNotice("Préférences enregistrées sur ce Mac.");
                     }}
                   />
+                  <section className="panel preferences">
+                    <h2>API Gemini</h2>
+                    <p>
+                      Gemini 3.5 Transcribe · en ligne · maximum 30 minutes par
+                      fichier avec horodatages.
+                    </p>
+                    <p>
+                      {data.installedModels?.includes("gemini")
+                        ? "Clé enregistrée dans le Trousseau macOS."
+                        : "Aucune clé enregistrée."}{" "}
+                      La clé se saisit dans une fenêtre sécurisée native et
+                      reste hors de l’interface web.
+                    </p>
+                    <p>
+                      Google AI Pro n’inclut pas une consommation API illimitée.
+                      Les audios quittent le Mac uniquement après sélection de
+                      Gemini et confirmation du lot. L’API n’a pas encore été
+                      validée avec une clé réelle.
+                    </p>
+                    <div className="button-row">
+                      <button
+                        disabled={!desktop || data.busy || working}
+                        onClick={() => run("gemini_config", { action: "save" })}
+                      >
+                        Enregistrer une clé API…
+                      </button>
+                      <button
+                        disabled={
+                          !desktop ||
+                          data.busy ||
+                          working ||
+                          !data.installedModels?.includes("gemini")
+                        }
+                        onClick={() => {
+                          void action("gemini_config", { action: "test" })
+                            .then(() =>
+                              setNotice(
+                                "Connexion et accès au modèle Gemini confirmés. Aucun audio envoyé.",
+                              ),
+                            )
+                            .catch(() => {});
+                        }}
+                      >
+                        Tester la connexion
+                      </button>
+                      <button
+                        disabled={
+                          !desktop ||
+                          data.busy ||
+                          working ||
+                          !data.installedModels?.includes("gemini")
+                        }
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              "Supprimer la clé Gemini du Trousseau ?",
+                            )
+                          )
+                            run("gemini_config", { action: "remove" });
+                        }}
+                      >
+                        Supprimer la clé
+                      </button>
+                    </div>
+                  </section>
                   <section className="panel info-panel">
                     <h3>Application</h3>
-                    <p>ELPOTRANSCRIBE 1.0.0 · {data.platform}</p>
+                    <p>ELPOTRANSCRIBE 1.1.0 · {data.platform}</p>
                     <p>
-                      Aucune télémétrie. Aucun envoi cloud. Gemini et le
-                      stockage de clé API ne sont pas activés.
+                      Aucune télémétrie. Le traitement local reste le choix par
+                      défaut. Gemini exige une sélection explicite et une
+                      confirmation avant chaque lot envoyé à Google.
                     </p>
                   </section>
                 </>

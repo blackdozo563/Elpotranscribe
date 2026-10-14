@@ -24,7 +24,7 @@ test("modèles non intégrés jamais proposés comme disponibles", async ({
     page.getByRole("heading", { name: "Parakeet Ultra", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByText("Qwen3-ASR 0.6B / 1.7B et Gemini", {
+    page.getByText("Qwen3-ASR 0.6B / 1.7B", {
       exact: false,
     }),
   ).toBeVisible();

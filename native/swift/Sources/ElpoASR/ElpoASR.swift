@@ -14,6 +14,12 @@ import FluidAudio
             throw Failure(message: "Ce moteur nécessite un Mac Apple Silicon ARM64")
             #endif
             let request = try JSONDecoder().decode(Request.self, from: FileHandle.standardInput.readDataToEndOfFile())
+            if request.action == "gemini-key-save" { let stored = try await MainActor.run { try promptGeminiKey() }; emit(["stored": stored]); return }
+            if request.action == "gemini-key-remove" { try removeGeminiKey(); emit(["removed": true]); return }
+            if request.action == "gemini-key-test" { try await testGemini(); emit(["connected": true]); return }
+            if request.engine == "gemini", request.action == "transcribe", let source = request.source {
+                try await transcribeGemini(source: source, language: request.language, consent: request.consent); return
+            }
             if request.action == "probe" {
                 guard let source = request.source else { throw Failure(message: "Audio absent") }
                 emit(["durationMs": try probe(source)]); return
