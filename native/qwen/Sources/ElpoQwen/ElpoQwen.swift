@@ -4,7 +4,7 @@ import MLXAudioCore
 import MLXAudioSTT
 import HuggingFace
 
-let qwenRevision = "244458d7b61e54ff135073ddc9ed76782bb20758"
+let qwenRevision = "8d86630ade569728aaea3dc1a29fc44e2efa719b"
 let languages = ["fr": "French", "en": "English", "es": "Spanish", "de": "German", "it": "Italian", "pt": "Portuguese"]
 func qwenRepository(_ engine: String) throws -> String {
     switch engine {
@@ -132,11 +132,8 @@ func transcribeQwen(root: URL, engine: String, source: String, language: String?
         do {
             guard ProcessInfo.processInfo.physicalMemory >= 7_500_000_000 else { throw Failure(message: "Qwen nécessite au moins 8 Go de mémoire unifiée") }
             let executable = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
-            let parent = executable.deletingLastPathComponent().deletingLastPathComponent()
-            let packaged = parent.appendingPathComponent("Resources/qwen/mlx.metallib")
-            let resource = FileManager.default.fileExists(atPath: packaged.path) ? packaged : parent.appendingPathComponent("resources/qwen/mlx.metallib")
+            let resource = executable.deletingLastPathComponent().appendingPathComponent("mlx.metallib")
             guard FileManager.default.fileExists(atPath: resource.path) else { throw Failure(message: "Bibliothèque Metal Qwen absente du bundle") }
-            GPU.metallib = resource
             Memory.cacheLimit = 128 * 1024 * 1024
             Memory.memoryLimit = 4_500_000_000
             let request = try JSONDecoder().decode(Request.self, from: FileHandle.standardInput.readDataToEndOfFile())

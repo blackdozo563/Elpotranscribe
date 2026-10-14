@@ -20,3 +20,5 @@ codesign --force --sign - src-tauri/binaries/elpo-qwen-aarch64-apple-darwin
 shader="$(find "$products" -name default.metallib -print -quit)"
 test -n "$shader"
 cp "$shader" src-tauri/resources/qwen/mlx.metallib
+
+cp "$shader" src-tauri/binaries/mlx.metallib
