@@ -450,3 +450,23 @@ test("éditeur : rechercher, naviguer, remplacer tout et annuler sans changer le
     page.getByRole("button", { name: "Remplacer tout", exact: true }),
   ).toBeDisabled();
 });
+
+test("un résultat terminé disparaît immédiatement du lot sans Nouveau lot", async ({
+  page,
+}) => {
+  await localReviewFixture(page);
+  const remove = page.getByRole("button", {
+    name: "Supprimer Voix.wav",
+    exact: true,
+  });
+  await expect(remove).toBeVisible();
+  await remove.click();
+  await expect(remove).toHaveCount(0);
+  const commands = await page.evaluate(() =>
+    (
+      window as unknown as { __TEST_CALLS__: Array<{ command: string }> }
+    ).__TEST_CALLS__.map((c) => c.command),
+  );
+  expect(commands).toContain("remove_job");
+  expect(commands).not.toContain("archive_completed");
+});
