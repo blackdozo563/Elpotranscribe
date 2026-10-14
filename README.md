@@ -2,7 +2,7 @@
 
 Application française de transcription locale pour macOS 14+ Apple Silicon. Deux moteurs : **Parakeet Ultra** par défaut et **Whisper large-v3-turbo Q5_0**, avec whisper.cpp, Metal et flash attention. Les modèles sont téléchargés explicitement dans Modèles IA ; les audios ne quittent pas le Mac.
 
-La version 1.2.0 est en validation. Le [DMG de préversion](https://github.com/blackdozo563/Elpotranscribe/releases/tag/v1.2.0) sera publié automatiquement après réussite du contrôle court, avec son SHA-256. Un tag seul ne prouve pas la disponibilité du DMG. La signature est ad hoc, non notariée.
+La **préversion 1.2.0 est publiée** : [télécharger le DMG Apple Silicon](https://github.com/blackdozo563/Elpotranscribe/releases/download/v1.2.0/ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.2.0.dmg). Le contrôle court natif a réussi et le téléchargement a été revérifié. SHA-256 : `1fee109164179c025d7bb018496527d2cbe82932b3969bbb9695359897377ce8`. Signature ad hoc, non notariée. Le test long reste indépendant ; les performances sur M2 8 Go physique sont à mesurer.
 
 ## Transcrire et relire
 

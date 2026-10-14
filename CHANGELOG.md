@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.0 — préversion publiée
+
+- Temps de passages Whisper prioritaires ; regroupement des limites invalides, texte conservé et aucun temps inventé.
+- Suppression immédiate du lot et de l’historique, avec audio et exports conservés.
+- Deux moteurs : Ultra et Whisper Turbo Q5_0 ; verrou système, processus successifs et contrôle de mémoire avant chargement.
+- Migration du vocabulaire et trois profils éditables : Liturgie FR, Psychologie FR, Psychologie EN-US. Gestion, JSON, invite plafonnée par le vrai tokenizer, relecture et ajout de termes depuis l’éditeur.
+- Benchmark local inclus dans le `.app`, sans outils de développement. Publication conditionnée au contrôle français court, test long indépendant.
+- Contrôle natif du DMG réussi ; SHA-256 et périmètre précis dans [la validation](docs/VALIDATION.md). Mesures M2 8 Go physiques à effectuer.
+
 ## 1.1.0 — préversion publiée le 14 octobre 2026
 
 - Whisper Base/Small et large-v3-turbo Q5_0 via whisper.cpp/Metal, modèles téléchargés à la demande et contrôle SHA-256.

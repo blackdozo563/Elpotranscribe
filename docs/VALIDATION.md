@@ -1,5 +1,32 @@
 # Validation réellement effectuée
 
+## Préversion 1.2.0 publiée
+
+Source : `56b49eda1e0444e1a86cd3e1eea95be2e14e87f7`, tag `v1.2.0`. [Contrôle natif réussi](https://github.com/blackdozo563/Elpotranscribe/actions/runs/38654475393/job/116161737492), [publication réussie](https://github.com/blackdozo563/Elpotranscribe/actions/runs/38654475393/job/116167765439), [DMG](https://github.com/blackdozo563/Elpotranscribe/releases/download/v1.2.0/ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.2.0.dmg).
+
+SHA-256 : `1fee109164179c025d7bb018496527d2cbe82932b3969bbb9695359897377ce8`. Téléchargement public revérifié : 6 273 475 octets, SHA identique au fichier publié, au digest GitHub et aux notes de version ; pied UDIF `koly` présent. Sur Mac, montage, architecture ARM64, signatures ad hoc et version interne 1.2.0 sont vérifiés avant les inférences.
+
+| Changement ou contrôle | Preuve |
+|---|---|
+| Passages Whisper prioritaires, mots facultatifs, conservation du texte et des bornes | Tests Rust `native::tests` et Swift `WhisperFallbackTests` : mots absents, durée nulle, inversion, passage unique, sortie vide. Un résultat sans durée positive est conservé ; l’export reste refusé plutôt que d’inventer une durée |
+| Reproduction du MP3 français long après le correctif de passages | [CI de l’étape 1 réussie](https://github.com/blackdozo563/Elpotranscribe/actions/runs/38650697528) sur `d804bcd` : test `real_long_french_mp3_default_engine_and_history` terminé, SRT et suppression persistée. Audio synthétique de 20 minutes ; pas l’enregistrement utilisateur |
+| Suppression immédiate, sans Nouveau lot | Tests navigateur `un résultat terminé disparaît immédiatement…` et `suppression native…` (IPC simulé), puis suppression réelle dans les tests natifs de file avec contrôle du JSON rechargé, audio et export conservés |
+| Mémoire et séquence des moteurs | Swift `MemorySafetyTests` et `ModelLeaseTests`, Rust `one_process_reservation_and_shutdown_reap_before_reuse`, double vérification native dans les deux sens. Le helper détient le verrou système jusqu’à sa sortie ; aucun chargement concurrent via le benchmark |
+| Migration et sauvegarde des profils | Tests Rust `vocabulary::tests` : migration Unicode une seule fois, édition persistée, réinitialisation, protection des profils fournis et fichier corrompu conservé |
+| Gestionnaire Vocabulaire et utilisation dans l’éditeur | 4 scénarios de `tests/browser/profiles.spec.ts` : création/collage/Entrée/sauvegarde/redémarrage, réinitialisation et garde des modifications, langue et lien du profil, correction annulable et ajout persistant. IPC simulé, pas de preuve des dialogues macOS |
+| Classement des divergences et suggestions | Rust `vocabulary::usage_tests`, TypeScript `profileReview.test.ts` : accents/casse ignorés, priorité des termes, horodatages inchangés, correction annulable et élisions françaises conservées |
+| Budget de l’invite | Dans le moteur empaqueté, une invite dépasse le budget : le vrai tokenizer compte ses tokens ; le nombre transmis reste dans la limite du modèle, au maximum 224. Assertions du contrôle `smoke-release.py` |
+| Benchmark installé | Ressource `bench-local.sh` présente et syntaxe vérifiée ; CLI du `.app` exécute Ultra, Turbo et deux nouvelles passes pour la double vérification. Temps mural, RSS, facteur temps réel et segments exigés. Le test Rust du parseur confirme les unités RSS macOS et la lecture du protocole |
+| Totaux | 28 tests Rust du cœur, 2 tests Rust de l’application sur Mac, 21 XCTest, 11 TypeScript et 15 navigateur réussis. Formatage, Clippy et build de production réussis |
+
+Le contrôle court utilise une voix française synthétique de **9 198 ms** (moins de 90 s). Il exécute les vrais Ultra et Turbo, la file, les exports, la suppression persistée, l’annulation, la double vérification dans les deux sens, le compteur/plafond de tokens et le benchmark. Ce n’est pas une mesure de précision sur parole humaine.
+
+Le job de 20 minutes propre à 1.2.0 continue séparément, avec `continue-on-error: true`, sans conditionner la publication ; son résultat final n’est pas revendiqué ici. Tous les jobs du nouveau workflow sont limités à 60 minutes. Le code de l’étape 1 a déjà passé cette reproduction longue ; les changements ultérieurs de profils et de tokenizer sont validés par le contrôle court ci-dessus.
+
+**Non vérifié sur M2 8 Go physique :** vitesse, mémoire unifiée totale, swap et précision sur les prières/contenus psychologiques réels. Le benchmark fourni permet ces mesures. Les dialogues macOS, Finder, l’installation sur un Mac propre et l’usage physiquement déconnecté restent à vérifier manuellement. Les tests navigateur utilisent une simulation IPC. La signature est ad hoc, sans notarisation. L’audio utilisateur français de 17,8 Mo et 20 minutes n’a pas été fourni ; il n’est pas prétendu reproduit.
+
+## Historique des validations antérieures
+
 Date : 14 octobre 2026. Source fonctionnelle validée : `74edaba`. [CI macOS ARM64 réussie](https://github.com/blackdozo563/Elpotranscribe/actions/runs/38561351957).
 
 La machine cloud est Linux x86_64 (Node 24.19.0, Rust 1.93.0). Les contrôles Apple ont été exécutés sur le véritable runner `macos-26` ARM64 de GitHub Actions.
@@ -75,11 +102,3 @@ La validation native est complétée par un MP3 français synthétique, stéréo
 ## Préversion 1.1.2 en cours de validation
 
 Source : `d174f65`, tag `v1.1.2`. [Validation de publication](https://github.com/blackdozo563/Elpotranscribe/actions/runs/38645820249). Le texte des passages de durée nulle est regroupé avec un passage voisin en conservant les bornes extérieures fournies par le moteur ; les passages qui se chevauchent sont regroupés de même. Une suite sans aucune durée positive reste refusée, ainsi que les temps négatifs ou inversés. Aucun temps de mot n’est créé. Trois tests Swift supplémentaires couvrent ces cas ; leur exécution native reste à confirmer. Les tests Linux de build, 8 tests TypeScript et 22 tests Rust ont réussi.
-
-## Stabilisation et profils 1.2.0 — publication en attente
-
-Les étapes sont committées séparément. Sur Linux : 28 tests du cœur Rust, 1 test Rust de lecture des métriques du benchmark, 10 tests TypeScript et 15 tests navigateur réussis. Formatage et Clippy du cœur réussis. Le pont C compile syntaxiquement contre les en-têtes de la révision Whisper épinglée. Les tests Rust prouvent migration JSON, rechargement, réinitialisation des profils, sauvegarde atomique sans effacement d’un fichier corrompu et classement des termes avec accents ignorés. Les tests navigateur prouvent les parcours de gestion, langue automatique, lien vers le profil actif, correction annulable et ajout de termes persistant dans leur simulation IPC. Ils ne prouvent pas les dialogues macOS réels.
-
-Le run [v1.1.2](https://github.com/blackdozo563/Elpotranscribe/actions/runs/38645820249) a finalement réussi, y compris le MP3 français synthétique de 20 minutes, le SRT, la file par défaut et la suppression persistée. Ce résultat concerne sa source `d174f65` ; il ne prouve pas à lui seul les changements ultérieurs de profils et de tokenizer.
-
-La publication 1.2.0 attend son propre contrôle court depuis le DMG : voix française ≤ 90 s, vrais Ultra et Turbo, suppression/export/file et double vérification. Une invite dépassant la limite doit être comptée avec le vrai tokenizer et transmise dans sa limite ; le benchmark installé doit réaliser quatre vraies passes et afficher ses métriques. Le test long indépendant ne conditionne pas la publication. Les nouveaux tests macOS de verrou global et de mémoire 8 Go restent à confirmer dans cette CI. Aucune mesure de performance M2 8 Go physique n’est revendiquée.
