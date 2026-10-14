@@ -14,20 +14,19 @@ import FluidAudio
             throw Failure(message: "Ce moteur nécessite un Mac Apple Silicon ARM64")
             #endif
             let request = try JSONDecoder().decode(Request.self, from: FileHandle.standardInput.readDataToEndOfFile())
-            if request.action == "gemini-key-save" { let stored = try await MainActor.run { try promptGeminiKey() }; emit(["stored": stored]); return }
-            if request.action == "gemini-key-remove" { try removeGeminiKey(); emit(["removed": true]); return }
-            if request.action == "gemini-key-test" { try await testGemini(); emit(["connected": true]); return }
-            if request.engine == "gemini", request.action == "transcribe", let source = request.source {
-                try await transcribeGemini(source: source, language: request.language, consent: request.consent); return
-            }
             if request.action == "probe" {
                 guard let source = request.source else { throw Failure(message: "Audio absent") }
                 emit(["durationMs": try probe(source)]); return
             }
             guard let path = request.models else { throw Failure(message: "Dossier du modèle absent") }
             let root = URL(fileURLWithPath: path, isDirectory: true)
+            if request.action == "check-updates" {
+                let updates = try await checkModelUpdates(root: root)
+                emit(["updates": try JSONSerialization.jsonObject(with: JSONEncoder().encode(updates))]); return
+            }
             let engine = request.engine ?? "ultra"
             if engine.hasPrefix("whisper-") {
+                guard ProcessInfo.processInfo.physicalMemory >= 7_500_000_000 else { throw Failure(message: "Au moins 8 Go de mémoire unifiée sont requis") }
                 if request.action == "install" {
                     try await installWhisper(root: root, engine: engine)
                     emit(["installed": true, "engine": engine]); return
@@ -36,27 +35,38 @@ import FluidAudio
                 try transcribeWhisper(root: root, engine: engine, source: source, language: request.language); return
             }
             guard engine == "ultra" else { throw Failure(message: "Moteur inconnu") }
-            let directory = root.appendingPathComponent(Repo.parakeetUltra.folderName, isDirectory: true)
             let marker = root.appendingPathComponent("verified.json")
             if request.action == "install" {
                 try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-                // Explicit installation is the only operation allowed to access the model network.
+                let sources = try await latestModelSources("ultra")
+                let staging = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+                defer { try? FileManager.default.removeItem(at: staging) }
+                let directory = staging.appendingPathComponent(Repo.parakeetUltra.folderName)
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                ModelRegistry.revisionOverrides = [Repo.parakeetUltra.remotePath: sources[0].revision]
+                let vocab = ModelNames.ASR.vocabularyFile
+                let vocabURL = URL(string: "https://huggingface.co/" + sources[0].repository + "/resolve/" + sources[0].revision + "/" + vocab)!
+                let (vocabulary, response) = try await URLSession.shared.data(from: vocabURL)
+                guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw Failure(message: "Vocabulaire du modèle indisponible ; version installée conservée") }
+                try vocabulary.write(to: directory.appendingPathComponent(vocab))
                 ModelHub.offlineMode = false
                 let models = try await AsrModels.downloadAndLoad(to: directory, version: .ultra)
                 let manager = AsrManager(); try await manager.loadModels(models); await manager.cleanup()
-                let manifest = Manifest(sdk: sdkRevision, files: try modelHashes(directory))
-                try JSONEncoder().encode(manifest).write(to: marker, options: .atomic)
+                let manifest = Manifest(sdk: sdkRevision, files: try modelHashes(directory), sources: sources)
+                try activateModel(prepared: directory, root: root, engine: "ultra", manifest: manifest)
                 emit(["installed": true, "engine": "Parakeet Ultra"]); return
             }
             guard request.action == "transcribe", let source = request.source else { throw Failure(message: "Commande inconnue") }
             guard ProcessInfo.processInfo.physicalMemory >= 7_500_000_000 else { throw Failure(message: "Au moins 8 Go de mémoire unifiée sont requis") }
             let manifest = try JSONDecoder().decode(Manifest.self, from: Data(contentsOf: marker))
+            let directory = try installedDirectory(root: root, engine: "ultra", manifest: manifest)
             let actual = try modelHashes(directory)
             guard manifest.sdk == sdkRevision, manifest.files == actual else {
                 let changed = Set(manifest.files.keys).union(actual.keys).filter { manifest.files[$0] != actual[$0] }.sorted().prefix(10)
                 throw Failure(message: "Intégrité du modèle non vérifiée. Réinstallez-le. Fichiers différents : " + changed.joined(separator: ", "))
             }
             ModelHub.offlineMode = true
+            if let source = manifest.sources?.first { ModelRegistry.revisionOverrides = [source.repository: source.revision] }
             let models = try await AsrModels.load(from: directory, version: .ultra)
             let manager = AsrManager(); try await manager.loadModels(models)
             var decoder = try TdtDecoderState(decoderLayers: AsrModelVersion.ultra.decoderLayers)
@@ -72,7 +82,7 @@ import FluidAudio
             let words = try timings.map { Word(startMs: try milliseconds($0.startTime), endMs: try milliseconds($0.endTime), text: $0.word) }
             await manager.cleanup()
             let data = try JSONEncoder().encode(words)
-            emit(["engine": "Parakeet Ultra", "modelVersion": sdkRevision, "text": result.text, "durationMs": try milliseconds(result.duration), "processingTimeMs": try milliseconds(result.processingTime), "words": try JSONSerialization.jsonObject(with: data)])
+            emit(["engine": "Parakeet Ultra", "modelVersion": manifest.sources?.map(\.revision).joined(separator: " / ") ?? sdkRevision, "text": result.text, "durationMs": try milliseconds(result.duration), "processingTimeMs": try milliseconds(result.processingTime), "words": try JSONSerialization.jsonObject(with: data)])
         } catch { emit(["error": error.localizedDescription]); exit(1) }
     }
 }

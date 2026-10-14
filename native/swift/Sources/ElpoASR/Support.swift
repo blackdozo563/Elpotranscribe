@@ -2,10 +2,10 @@ import Foundation
 import AVFoundation
 import CryptoKit
 
-struct Request: Decodable { let action: String; let models: String?; let source: String?; let language: String?; let engine: String?; let consent: Bool? }
+struct Request: Decodable { let action: String; let models: String?; let source: String?; let language: String?; let engine: String? }
 struct Word: Codable { let startMs: UInt64; let endMs: UInt64; let text: String }
 struct Failure: LocalizedError { let message: String; var errorDescription: String? { message } }
-struct Manifest: Codable { let sdk: String; let files: [String: String] }
+struct Manifest: Codable, Sendable { let sdk: String; let files: [String: String]; var sources: [ModelSource]? = nil; var directory: String? = nil }
 let sdkRevision = "224de0fb3c304b41bbae24e85e1801900865ff3e"
 func emit(_ value: Any) {
     if let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]), let line = String(data: data, encoding: .utf8) { print(line) }

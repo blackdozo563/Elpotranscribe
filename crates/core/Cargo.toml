@@ -9,4 +9,5 @@ serde_json = "1.0"
 thiserror = "2.0"
 tempfile = "3.23"
 zip = { version = "2.4", default-features = false, features = ["deflate"] }
+similar = { version = "2.7.0", default-features = false }
 [dev-dependencies]

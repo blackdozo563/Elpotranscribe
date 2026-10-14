@@ -27,13 +27,31 @@ struct Job {
     language: String,
     engine: String,
     #[serde(default)]
+    model_version: Option<String>,
+    #[serde(default)]
+    verification: Option<Verification>,
+    #[serde(default)]
+    verification_status: Option<String>,
+    #[serde(default)]
+    verification_error: Option<String>,
+    #[serde(default)]
     archived: bool,
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Verification {
+    secondary_engine: String,
+    secondary_version: String,
+    reference_cues: Vec<Cue>,
+    review: core::review::Review,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Settings {
     #[serde(default = "default_engine")]
     engine: String,
+    #[serde(default = "default_update_checks")]
+    auto_model_updates: bool,
     language: String,
     auto_save: bool,
     subtitles: SubtitleSettings,
@@ -43,6 +61,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             engine: default_engine(),
+            auto_model_updates: true,
             language: "fr".into(),
             auto_save: false,
             subtitles: SubtitleSettings::default(),
@@ -63,6 +82,7 @@ struct Snapshot {
     busy: bool,
     model_installed: bool,
     installed_models: Vec<String>,
+    model_updates: Vec<serde_json::Value>,
     platform: String,
 }
 #[derive(Default)]
@@ -107,10 +127,17 @@ impl AppState {
         self.data.root.join("models")
     }
     fn installed(&self, engine: &str) -> bool {
-        if engine == "gemini" {
-            return self.data.root.join("gemini-key-configured").is_file();
-        }
         self.model_marker(engine).is_file()
+    }
+    fn qwen_helper(&self) -> PathBuf {
+        let bundled = self.data.helper.with_file_name("elpo-qwen");
+        if bundled.is_file() {
+            bundled
+        } else {
+            self.data
+                .helper
+                .with_file_name("elpo-qwen-aarch64-apple-darwin")
+        }
     }
     fn model_marker(&self, engine: &str) -> PathBuf {
         self.models().join(if engine == "ultra" {
@@ -118,6 +145,30 @@ impl AppState {
         } else {
             format!("{engine}.json")
         })
+    }
+    fn remember_model_version(&self, engine: &str, checked_at: u128) -> Result<(), String> {
+        let manifest: serde_json::Value =
+            serde_json::from_slice(&fs::read(self.model_marker(engine)).map_err(err)?)
+                .map_err(err)?;
+        let revisions = manifest["sources"].as_array().map(|sources| {
+            sources
+                .iter()
+                .filter_map(|source| source["revision"].as_str())
+                .collect::<Vec<_>>()
+                .join(" / ")
+        });
+        if let Some(revision) = revisions {
+            let path = self.data.root.join("model-updates.json");
+            let mut updates: Vec<serde_json::Value> = fs::read(&path)
+                .ok()
+                .and_then(|data| serde_json::from_slice(&data).ok())
+                .unwrap_or_default();
+            updates.retain(|value| value["engine"].as_str() != Some(engine));
+            updates.push(serde_json::json!({"engine":engine,"status":"current","installedRevision":revision,"latestRevision":revision,"checkedAt":checked_at,"error":null}));
+            core::atomic_save(&path, &serde_json::to_vec(&updates).map_err(err)?, true)
+                .map_err(err)?;
+        }
+        Ok(())
     }
     fn helper(
         &self,
@@ -133,7 +184,11 @@ impl AppState {
             }
             if let Some(id) = id {
                 let s = self.data.store.lock().map_err(err)?;
-                if s.jobs.iter().any(|j| j.id == id && j.status == "cancelled") {
+                if s.jobs.iter().any(|j| {
+                    j.id == id
+                        && (j.status == "cancelled"
+                            || j.verification_status.as_deref() == Some("cancelled"))
+                }) {
                     return Err("Annulé".into());
                 }
             }
@@ -141,7 +196,13 @@ impl AppState {
                 .prefix("elpotranscribe-")
                 .tempdir()
                 .map_err(err)?;
-            let mut child = Command::new(&self.data.helper)
+            let helper =
+                if ["qwen-0.6b", "qwen-1.7b"].contains(&request["engine"].as_str().unwrap_or("")) {
+                    self.qwen_helper()
+                } else {
+                    self.data.helper.clone()
+                };
+            let mut child = Command::new(helper)
                 .env("TMPDIR", temporary.path())
                 .stdin(Stdio::piped())
                 .stdout(Stdio::from(out.reopen().map_err(err)?))
@@ -188,7 +249,7 @@ impl AppState {
             .read_to_string(&mut text)
             .map_err(err)?;
         // Swift SDK diagnostics may precede the single JSON protocol line.
-        let value=text.lines().rev().find_map(|line|serde_json::from_str::<serde_json::Value>(line).ok()).ok_or_else(||format!("Le moteur natif s’est arrêté ({status}). Consultez Console, sous-système FluidAudio."))?;
+        let value=text.lines().rev().find_map(|line|serde_json::from_str::<serde_json::Value>(line).ok()).ok_or_else(||format!("Le moteur natif s’est arrêté ({status}). Consultez Console macOS pour le diagnostic natif."))?;
         if let Some(e) = value.get("error").and_then(|v| v.as_str()) {
             return Err(e.into());
         }
@@ -205,11 +266,22 @@ impl AppState {
             settings: s.settings.clone(),
             busy,
             model_installed: self.installed(&s.settings.engine),
-            installed_models: ["ultra", "whisper-base", "whisper-small", "gemini"]
-                .into_iter()
-                .filter(|e| self.installed(e))
-                .map(str::to_owned)
-                .collect(),
+            installed_models: [
+                "ultra",
+                "whisper-base",
+                "whisper-small",
+                "whisper-turbo",
+                "qwen-0.6b",
+                "qwen-1.7b",
+            ]
+            .into_iter()
+            .filter(|e| self.installed(e))
+            .map(str::to_owned)
+            .collect(),
+            model_updates: fs::read(self.data.root.join("model-updates.json"))
+                .ok()
+                .and_then(|data| serde_json::from_slice(&data).ok())
+                .unwrap_or_default(),
             platform: self.data.platform.clone(),
         })
     }
@@ -220,6 +292,12 @@ impl AppState {
         self.modify(id, |j| {
             if ["pending", "transcribing"].contains(&j.status.as_str()) {
                 j.status = "cancelled".into();
+            }
+            if j.verification_status.as_deref() == Some("processing") {
+                j.verification_status = Some("cancelled".into());
+                if !j.cues.is_empty() {
+                    j.status = "completed".into();
+                }
             }
         })?;
         if runtime.active.as_deref() == Some(id) {
@@ -270,8 +348,163 @@ fn err(e: impl std::fmt::Display) -> String {
 fn default_engine() -> String {
     "ultra".into()
 }
+fn default_update_checks() -> bool {
+    true
+}
+fn infer_words(
+    state: &AppState,
+    engine: &str,
+    job: &Job,
+    language: &str,
+) -> Result<(Vec<Word>, String), String> {
+    let result = state.helper(serde_json::json!({"action":"transcribe", "models":state.models(), "source":job.source, "language":language, "engine":engine}), Some(&job.id))?;
+    let expected = if engine == "ultra" {
+        "Parakeet Ultra"
+    } else {
+        engine
+    };
+    if result["engine"].as_str() != Some(expected) {
+        return Err("Le moteur exécuté ne correspond pas au moteur choisi".into());
+    }
+    Ok((
+        serde_json::from_value(result["words"].clone()).map_err(err)?,
+        result["modelVersion"]
+            .as_str()
+            .ok_or("Version du moteur absente")?
+            .to_owned(),
+    ))
+}
+fn process_verification(state: AppState, job: Job, settings: Settings, secondary: String) {
+    let result = (|| {
+        let (primary_words, version) = infer_words(&state, &job.engine, &job, &job.language)?;
+        let cues = core::segment(&primary_words, &settings.subtitles).map_err(err)?;
+        // Persist the primary result before loading the independent second model.
+        state.modify(&job.id, |current| {
+            current.cues = cues.clone();
+            current.model_version = Some(version);
+            current.dirty = true;
+        })?;
+        let comparison = (|| {
+            let (secondary_words, secondary_version) =
+                infer_words(&state, &secondary, &job, &job.language)?;
+            core::segment(&secondary_words, &settings.subtitles).map_err(err)?;
+            let review = core::review::compare(&cues, &secondary_words).map_err(err)?;
+            Ok::<_, String>(Verification {
+                secondary_engine: secondary,
+                secondary_version,
+                reference_cues: cues,
+                review,
+            })
+        })();
+        state.modify(&job.id, |current| {
+            if current.status == "cancelled"
+                || current.verification_status.as_deref() == Some("cancelled")
+            {
+                return;
+            }
+            current.status = "completed".into();
+            match comparison {
+                Ok(verification) => {
+                    current.verification = Some(verification);
+                    current.verification_status = Some("completed".into());
+                }
+                Err(error) => {
+                    current.verification_status = Some("failed".into());
+                    current.verification_error = Some(error);
+                }
+            }
+        })
+    })();
+    if let Err(error) = result {
+        let _ = state.modify(&job.id, |current| {
+            if current.status != "cancelled"
+                && current.verification_status.as_deref() != Some("cancelled")
+            {
+                current.status = "failed".into();
+                current.verification_status = Some("failed".into());
+                current.verification_error = Some(error);
+            }
+        });
+    }
+    state.release();
+}
+#[tauri::command]
+fn start_verification(
+    state: State<'_, AppState>,
+    id: String,
+    primary: String,
+    secondary: String,
+) -> Result<String, String> {
+    check_engine(&primary)?;
+    check_engine(&secondary)?;
+    if primary == secondary {
+        return Err("Choisissez deux moteurs différents".into());
+    }
+    if !state.installed(&primary) || !state.installed(&secondary) {
+        return Err("Téléchargez les deux modèles dans Modèles IA avant la comparaison".into());
+    }
+    state.reserve()?;
+    let prepared = (|| {
+        let mut store = state.data.store.lock().map_err(err)?;
+        let mut job = store
+            .jobs
+            .iter()
+            .find(|job| job.id == id)
+            .ok_or("Audio inconnu")?
+            .clone();
+        if !job.source.is_file() {
+            return Err("L’audio a été déplacé. Reliez-le avant la comparaison".into());
+        }
+        let settings = store.settings.clone();
+        if job.language == "ar"
+            && (primary == "ultra"
+                || secondary == "ultra"
+                || primary.starts_with("qwen-")
+                || secondary.starts_with("qwen-"))
+        {
+            return Err("Pour l’arabe, choisissez deux modèles Whisper ; l’aligneur Qwen et Ultra ne prennent pas cette langue en charge".into());
+        }
+        job.id = uuid::Uuid::new_v4().to_string();
+        job.created_at = now();
+        job.archived = true;
+        job.engine = primary;
+        job.model_version = None;
+        job.status = "transcribing".into();
+        job.cues.clear();
+        job.dirty = false;
+        job.export_path = None;
+        job.error = None;
+        job.verification = None;
+        job.verification_error = None;
+        job.verification_status = Some("processing".into());
+        store.jobs.push(job.clone());
+        state.persist(&store)?;
+        Ok::<_, String>((job, settings))
+    })();
+    match prepared {
+        Ok((job, settings)) => {
+            let id = job.id.clone();
+            let state = state.inner().clone();
+            std::thread::spawn(move || process_verification(state, job, settings, secondary));
+            Ok(id)
+        }
+        Err(error) => {
+            state.release();
+            Err(error)
+        }
+    }
+}
 fn check_engine(engine: &str) -> Result<(), String> {
-    if ["ultra", "whisper-base", "whisper-small", "gemini"].contains(&engine) {
+    if [
+        "ultra",
+        "whisper-base",
+        "whisper-small",
+        "whisper-turbo",
+        "qwen-0.6b",
+        "qwen-1.7b",
+    ]
+    .contains(&engine)
+    {
         Ok(())
     } else {
         Err("Moteur non pris en charge".into())
@@ -297,26 +530,29 @@ async fn confirm_discard() -> Result<bool, String> {
     .map_err(err)
 }
 #[tauri::command]
-async fn gemini_config(state: State<'_, AppState>, action: String) -> Result<Snapshot, String> {
-    if !["save", "test", "remove"].contains(&action.as_str()) {
-        return Err("Action Gemini inconnue".into());
-    }
+fn snapshot(state: State<'_, AppState>) -> Result<Snapshot, String> {
+    state.snapshot()
+}
+#[tauri::command]
+async fn check_model_updates(state: State<'_, AppState>) -> Result<Snapshot, String> {
     let state = state.inner().clone();
     state.reserve()?;
     tauri::async_runtime::spawn_blocking(move || {
         let result = (|| {
             let value = state.helper(
-                serde_json::json!({"action": format!("gemini-key-{action}")}),
+                serde_json::json!({"action":"check-updates", "models":state.models()}),
                 None,
             )?;
-            let marker = state.data.root.join("gemini-key-configured");
-            if value["stored"].as_bool() == Some(true) {
-                core::atomic_save(&marker, b"Keychain", true).map_err(err)?;
-            }
-            if action == "remove" && marker.exists() {
-                fs::remove_file(marker).map_err(err)?;
-            }
-            Ok::<(), String>(())
+            let updates = value
+                .get("updates")
+                .filter(|v| v.is_array())
+                .ok_or("Catalogue de versions invalide")?;
+            core::atomic_save(
+                &state.data.root.join("model-updates.json"),
+                &serde_json::to_vec(updates).map_err(err)?,
+                true,
+            )
+            .map_err(err)
         })();
         state.release();
         result?;
@@ -324,10 +560,6 @@ async fn gemini_config(state: State<'_, AppState>, action: String) -> Result<Sna
     })
     .await
     .map_err(err)?
-}
-#[tauri::command]
-fn snapshot(state: State<'_, AppState>) -> Result<Snapshot, String> {
-    state.snapshot()
 }
 #[tauri::command]
 async fn import_files(
@@ -409,7 +641,18 @@ async fn import_files(
                     dirty: false,
                     created_at: now(),
                     language: language.clone(),
-                    engine: "Parakeet Ultra · Core ML".into(),
+                    engine: state
+                        .data
+                        .store
+                        .lock()
+                        .map_err(err)?
+                        .settings
+                        .engine
+                        .clone(),
+                    model_version: None,
+                    verification: None,
+                    verification_status: None,
+                    verification_error: None,
                     archived: false,
                 });
             }
@@ -431,16 +674,18 @@ async fn install_model(
 ) -> Result<Snapshot, String> {
     let engine = engine.unwrap_or_else(default_engine);
     check_engine(&engine)?;
-    if engine == "gemini" {
-        return Err("Configurez la clé Gemini dans Paramètres".into());
-    }
     let state = state.inner().clone();
     state.reserve()?;
     tauri::async_runtime::spawn_blocking(move || {
+        let checked_at = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
         let result = state.helper(
             serde_json::json!({"action":"install","models":state.models(),"engine":engine}),
             None,
         );
+        let result = result.and_then(|_| state.remember_model_version(&engine, checked_at));
         state.release();
         result?;
         state.snapshot()
@@ -455,19 +700,33 @@ async fn remove_model(
 ) -> Result<Snapshot, String> {
     let engine = engine.unwrap_or_else(default_engine);
     check_engine(&engine)?;
-    if engine == "gemini" {
-        return Err("Supprimez la clé Gemini dans Paramètres".into());
-    }
     let state = state.inner().clone();
     state.reserve()?;
     let result = (|| {
-        let directory = state.models().join(if engine == "ultra" {
+        let marker = state.model_marker(&engine);
+        let versioned = fs::read(&marker)
+            .ok()
+            .and_then(|data| serde_json::from_slice::<serde_json::Value>(&data).ok())
+            .and_then(|value| value["directory"].as_str().map(str::to_owned));
+        let folder = if engine == "ultra" {
             "parakeet-ultra"
         } else {
             &engine
-        });
+        };
+        let directory = if let Some(relative) = versioned {
+            let parts: Vec<_> = relative.split('/').collect();
+            if parts.len() != 2
+                || !parts[0].starts_with(&format!("installed-{engine}-"))
+                || parts[0].contains("..")
+                || parts[1] != folder
+            {
+                return Err("Chemin du modèle invalide".into());
+            }
+            state.models().join(parts[0])
+        } else {
+            state.models().join(folder)
+        };
         // Remove availability first, including when a partial installation remains.
-        let marker = state.model_marker(&engine);
         if marker.exists() {
             fs::remove_file(marker).map_err(err)?;
         }
@@ -480,7 +739,7 @@ async fn remove_model(
     result?;
     state.snapshot()
 }
-fn process_queue(state: AppState, cloud_consent: bool) {
+fn process_queue(state: AppState) {
     loop {
         if state
             .data
@@ -514,21 +773,34 @@ fn process_queue(state: AppState, cloud_consent: bool) {
             Ok(Some(j)) => j,
             _ => break,
         };
-        let result = (|| -> Result<Vec<Cue>, String> {
-            if settings.engine == "gemini" && !cloud_consent {
-                return Err("Envoi cloud non autorisé".into());
+        let result = (|| -> Result<(Vec<Cue>, String), String> {
+            let result=state.helper(serde_json::json!({"action":"transcribe","models":state.models(),"source":job.source,"language":settings.language,"engine":settings.engine}),Some(&job.id))?;
+            let expected = if settings.engine == "ultra" {
+                "Parakeet Ultra"
+            } else {
+                &settings.engine
+            };
+            if result["engine"].as_str() != Some(expected) {
+                return Err("Le moteur exécuté ne correspond pas au moteur choisi".into());
             }
-            let result=state.helper(serde_json::json!({"action":"transcribe","models":state.models(),"source":job.source,"language":settings.language,"engine":settings.engine,"consent": cloud_consent}),Some(&job.id))?;
+            let version = result["modelVersion"]
+                .as_str()
+                .ok_or("Version du moteur absente")?
+                .to_owned();
             let words: Vec<Word> = serde_json::from_value(result["words"].clone()).map_err(err)?;
-            core::segment(&words, &settings.subtitles).map_err(err)
+            Ok((
+                core::segment(&words, &settings.subtitles).map_err(err)?,
+                version,
+            ))
         })();
         let saved = state.modify(&job.id, |j| {
             if j.status == "cancelled" {
                 return;
             }
             match result {
-                Ok(cues) => {
+                Ok((cues, version)) => {
                     j.cues = cues;
+                    j.model_version = Some(version);
                     j.status = "completed".into();
                     j.dirty = true;
                     if settings.auto_save {
@@ -573,23 +845,10 @@ fn start_batch(state: State<'_, AppState>) -> Result<(), String> {
         .clone();
     if !state.installed(&engine) {
         state.release();
-        return Err(
-            "Installez le moteur choisi dans Modèles IA, ou configurez sa clé dans Paramètres"
-                .into(),
-        );
-    }
-    if engine == "gemini" {
-        let accepted = rfd::MessageDialog::new()
-            .set_title("Envoyer ce lot à Google Gemini ?")
-            .set_description("Les audios en attente quitteront ce Mac et seront envoyés à Google. L’API peut être payante, indépendamment de Google AI Pro. Maximum 30 minutes par fichier avec horodatages. L’annulation locale ne garantit pas l’arrêt d’une requête déjà reçue par Google. Autoriser l’envoi de ce lot ?")
-            .set_buttons(rfd::MessageButtons::YesNo).show() == rfd::MessageDialogResult::Yes;
-        if !accepted {
-            state.release();
-            return Ok(());
-        }
+        return Err("Installez le moteur choisi dans Modèles IA".into());
     }
     let state = state.inner().clone();
-    std::thread::spawn(move || process_queue(state, engine == "gemini"));
+    std::thread::spawn(move || process_queue(state));
     Ok(())
 }
 #[tauri::command]
@@ -646,7 +905,8 @@ fn save_settings(state: State<'_, AppState>, settings: Settings) -> Result<(), S
     check_engine(&settings.engine)?;
     settings.subtitles.validate().map_err(err)?;
     if !["auto", "fr", "en", "es", "de", "it", "pt", "ar"].contains(&settings.language.as_str())
-        || (settings.engine == "ultra" && settings.language == "ar")
+        || ((settings.engine == "ultra" || settings.engine.starts_with("qwen-"))
+            && settings.language == "ar")
     {
         return Err("Langue non prise en charge".into());
     }
@@ -778,7 +1038,21 @@ pub fn run() {
             } else {
                 Store::default()
             };
+            if check_engine(&store.settings.engine).is_err() {
+                store.settings.engine = default_engine();
+                if store.settings.language == "ar" {
+                    store.settings.language = "auto".into();
+                }
+            }
             for j in &mut store.jobs {
+                if j.verification_status.as_deref() == Some("processing") {
+                    j.verification_status = Some("failed".into());
+                    j.verification_error =
+                        Some("Vérification interrompue. Relancez la comparaison.".into());
+                    if !j.cues.is_empty() {
+                        j.status = "completed".into();
+                    }
+                }
                 if j.status == "transcribing" {
                     j.status = "failed".into();
                     j.error = Some("Traitement interrompu. Vous pouvez réessayer.".into());
@@ -825,16 +1099,17 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             snapshot,
+            check_model_updates,
             confirm_discard,
             import_files,
             install_model,
             remove_model,
             start_batch,
+            start_verification,
             cancel_job,
             retry_job,
             remove_job,
             save_settings,
-            gemini_config,
             archive_completed,
             save_edit,
             export_job,
@@ -859,6 +1134,85 @@ pub fn run() {
 #[cfg(test)]
 mod integration_tests {
     use super::*;
+    #[test]
+    #[ignore = "Requires installed Ultra and Whisper Turbo; run from smoke-native.py"]
+    fn real_double_verification_preserves_primary_and_reverses_engines() {
+        let helper = PathBuf::from(std::env::var("ELPO_TEST_HELPER").unwrap());
+        let models = PathBuf::from(std::env::var("ELPO_TEST_MODELS").unwrap());
+        let audio = PathBuf::from(std::env::var("ELPO_TEST_AUDIO").unwrap());
+        let root = tempfile::tempdir().unwrap();
+        std::os::unix::fs::symlink(models, root.path().join("models")).unwrap();
+        let settings = Settings {
+            language: "en".into(),
+            ..Settings::default()
+        };
+        let source: Job = serde_json::from_value(serde_json::json!({
+            "id":"original", "source":audio, "name":"jfk.wav", "size":100,
+            "durationMs":11000, "status":"completed", "cues":[{"startMs":100,"endMs":1000,"text":"Original preserved"}],
+            "error":null,"exportPath":null,"dirty":false,"createdAt":0,
+            "language":"en","engine":"ultra"
+        })).unwrap();
+        let state = AppState {
+            data: Arc::new(Inner {
+                store: Mutex::new(Store {
+                    jobs: vec![source.clone()],
+                    settings: settings.clone(),
+                }),
+                runtime: Mutex::new(Runtime::default()),
+                root: root.path().into(),
+                helper,
+                platform: "Native double verification".into(),
+            }),
+        };
+        for (primary, secondary) in [("ultra", "whisper-turbo"), ("whisper-turbo", "ultra")] {
+            let mut job = source.clone();
+            job.id = uuid::Uuid::new_v4().to_string();
+            job.engine = primary.into();
+            job.status = "transcribing".into();
+            job.cues.clear();
+            job.verification_status = Some("processing".into());
+            state.data.store.lock().unwrap().jobs.push(job.clone());
+            state.reserve().unwrap();
+            process_verification(
+                state.clone(),
+                job.clone(),
+                settings.clone(),
+                secondary.into(),
+            );
+            let snapshot = state.snapshot().unwrap();
+            assert!(!snapshot.busy);
+            let result = snapshot.jobs.iter().find(|j| j.id == job.id).unwrap();
+            assert_eq!(
+                result.verification_status.as_deref(),
+                Some("completed"),
+                "{:?}",
+                result.verification_error
+            );
+            assert_eq!(result.status, "completed");
+            assert_eq!(result.engine, primary);
+            assert!(!result.model_version.as_deref().unwrap().is_empty());
+            let review = result.verification.as_ref().unwrap();
+            assert_eq!(review.secondary_engine, secondary);
+            assert!(!review.secondary_version.is_empty());
+            assert_eq!(
+                serde_json::to_value(&result.cues).unwrap(),
+                serde_json::to_value(&review.reference_cues).unwrap()
+            );
+            assert!(core::srt(&result.cues)
+                .unwrap()
+                .to_lowercase()
+                .contains("country"));
+            assert_eq!(snapshot.jobs[0].cues[0].text, "Original preserved");
+            assert!(state.data.runtime.lock().unwrap().child.is_none());
+            let saved: Store =
+                serde_json::from_slice(&fs::read(root.path().join("history.json")).unwrap())
+                    .unwrap();
+            assert_eq!(
+                saved.jobs.last().unwrap().verification_status.as_deref(),
+                Some("completed")
+            );
+        }
+    }
     // This opt-in test uses actual Core ML inference. It is never counted as a
     // passing unit test when models or the ARM64 macOS runtime are unavailable.
     #[test]
@@ -896,6 +1250,10 @@ mod integration_tests {
             created_at: now(),
             language: "en".into(),
             engine: "Parakeet Ultra · Core ML".into(),
+            model_version: None,
+            verification: None,
+            verification_status: None,
+            verification_error: None,
             archived: false,
         };
         let mut settings = Settings::default();
@@ -915,7 +1273,7 @@ mod integration_tests {
             }),
         };
         state.reserve().unwrap();
-        process_queue(state.clone(), false);
+        process_queue(state.clone());
         let snapshot = state.snapshot().unwrap();
         assert!(!snapshot.busy);
         assert_eq!(snapshot.jobs[0].status, "failed");
@@ -955,7 +1313,7 @@ mod integration_tests {
         }
         state.reserve().unwrap();
         let worker_state = state.clone();
-        let worker = std::thread::spawn(move || process_queue(worker_state, false));
+        let worker = std::thread::spawn(move || process_queue(worker_state));
         let started = std::time::Instant::now();
         loop {
             if state.data.runtime.lock().unwrap().active.as_deref() == Some(id.as_str()) {
@@ -979,7 +1337,7 @@ mod integration_tests {
         }
         state.reserve().unwrap();
         let exiting = state.clone();
-        let worker = std::thread::spawn(move || process_queue(exiting, false));
+        let worker = std::thread::spawn(move || process_queue(exiting));
         let started = std::time::Instant::now();
         let temporary_path = loop {
             let runtime = state.data.runtime.lock().unwrap();

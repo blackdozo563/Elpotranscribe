@@ -21,8 +21,7 @@ La machine cloud est Linux x86_64 (Node 24.19.0, Rust 1.93.0). Les contrôles Ap
 | Formatage Rust, Clippy et schéma JSON Tauri | Réussis |
 | Audit npm des dépendances d’exécution | Aucune vulnérabilité signalée au moment du contrôle |
 | Interface graphique macOS, dialogues et Finder | Non testés manuellement ; ne pas assimiler la simulation IPC à ces contrôles |
-| M1 8 Go / M2 8 Go physiques | Non testés ; aucune certification ni résultat de benchmark matériel annoncé |
-| Qwen / whisper.cpp / Gemini / double vérification | Non implémentés et non sélectionnables |
+| M1 8 Go / M2 8 Go physiques | Retour utilisateur positif sur la qualité de Parakeet Ultra sur M2 8 Go ; protocole complet et mesures non réalisés. M1 non testé |
 
 Le test natif utilise un vrai extrait de parole à URL et empreinte verrouillées. Il exige les mots attendus et des horodatages reconnus, puis produit un SRT. Il exécute ensuite la file réelle avec deux copies de cet audio dans des dossiers différents, avec des accents et plusieurs points dans le nom. Il vérifie les exports à côté de chaque source, la conservation des audios et la poursuite après un audio corrompu. Il démarre et annule un vrai processus, puis teste l’arrêt à la sortie et la suppression du répertoire temporaire. Le compteur de tests doit être positif : un test ignoré ou un passage sans tests ne suffit pas.
 
@@ -33,3 +32,9 @@ Les tests navigateur couvrent l’interface vide, la distinction web/native, l�
 Le rapport `target/smoke-result.json` mesure le temps mural, le facteur temps réel et la mémoire maximale du processus moteur sur le runner. Il ne représente pas la consommation totale de l’application ni un benchmark M1/M2 8 Go. L’alignement mot à mot n’a pas été évalué contre une vérité terrain manuelle.
 
 Le flag réseau désactivé de FluidAudio est utilisé pendant chaque transcription après l’installation. Un essai physique totalement déconnecté et une installation sans outils de développement restent à effectuer avant une livraison stable.
+
+## Retour utilisateur sur matériel physique
+
+Le 14 octobre 2026, l’utilisateur indique avoir testé la version avec Parakeet Ultra sur un **Mac M2 8 Go**, avec un résultat jugé « top ». Ce retour confirme un essai utilisateur réussi de transcription sur cette configuration. Version de macOS, identifiant exact du build, durée/format/langue de l’audio, temps de calcul et pic mémoire non communiqués. Il ne valide pas les nouveaux moteurs et ne remplace pas le protocole complet de tests physiques.
+
+## Développement 1.1.0

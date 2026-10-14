@@ -30,12 +30,26 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["app", "dmg"],
+    "targets": [
+      "app",
+      "dmg"
+    ],
     "category": "Productivity",
-    "shortDescription": "Transcription audio intelligente, locale et priv\u00e9e",
-    "icon": ["icons/icon.icns", "icons/32x32.png", "icons/128x128.png"],
-    "externalBin": ["binaries/elpo-asr"],
+    "shortDescription": "Transcription audio intelligente, locale et privée",
+    "icon": [
+      "icons/icon.icns",
+      "icons/32x32.png",
+      "icons/128x128.png"
+    ],
+    "externalBin": [
+      "binaries/elpo-asr",
+      "binaries/elpo-qwen"
+    ],
     "macOS": {
+      "files": {
+        "MacOS/mlx.metallib": "resources/qwen/mlx.metallib",
+        "Frameworks": "resources/qwen-runtime"
+      },
       "minimumSystemVersion": "14.0",
       "signingIdentity": "-",
       "dmg": {

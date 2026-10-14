@@ -60,11 +60,13 @@ test("éditeur : modification, annulation et export par le pont natif simulé", 
       busy: false,
       modelInstalled: true,
       installedModels: ["ultra"],
+      modelUpdates: [],
       platform: "Simulation UI",
       settings: {
         engine: "ultra",
         language: "fr",
         autoSave: false,
+        autoModelUpdates: true,
         subtitles: { lineLength: 42, maxLines: 2, maxDurationMs: 5000 },
         vocabulary: [],
       },
@@ -124,4 +126,181 @@ test("éditeur : modification, annulation et export par le pont natif simulé", 
   await expect(
     page.getByText("Export SRT à mettre à jour", { exact: false }),
   ).toHaveCount(0);
+});
+
+// These fixtures exercise only renderer behavior; native inference has separate tests.
+async function localReviewFixture(page: import("@playwright/test").Page) {
+  await page.addInitScript(() => {
+    const cues = [
+      { startMs: 100, endMs: 2500, text: "Je vais sortir ce foir." },
+    ];
+    const job = {
+      id: "review-fixture",
+      source: "/fixture/Voix.wav",
+      name: "Voix.wav",
+      size: 100000,
+      durationMs: 3000,
+      status: "completed",
+      cues,
+      error: null,
+      exportPath: null,
+      dirty: false,
+      createdAt: 0,
+      engine: "ultra",
+      language: "fr",
+      verificationStatus: "completed",
+      verification: {
+        secondaryEngine: "whisper-turbo",
+        secondaryVersion: "fixture-version",
+        referenceCues: cues,
+        review: {
+          approximate: false,
+          differences: [
+            {
+              cueIndex: 0,
+              primaryText: cues[0].text,
+              candidateText: "Je vais sortir ce soir.",
+              alternativeText: "soir",
+            },
+          ],
+        },
+      },
+    };
+    const state = {
+      jobs: [job],
+      busy: false,
+      modelInstalled: true,
+      installedModels: ["ultra", "whisper-turbo"],
+      platform: "Simulation UI",
+      modelUpdates: [
+        {
+          engine: "whisper-turbo",
+          status: "available",
+          installedRevision: "previous",
+          latestRevision: "latest",
+          checkedAt: Date.now(),
+          error: null,
+        },
+      ],
+      settings: {
+        engine: "ultra",
+        language: "fr",
+        autoSave: false,
+        autoModelUpdates: false,
+        vocabulary: [],
+        subtitles: { lineLength: 42, maxLines: 2, maxDurationMs: 5000 },
+      },
+    };
+    const calls: Array<{ command: string; args: unknown }> = [];
+    Object.assign(window, {
+      __TEST_CALLS__: calls,
+      __TAURI_EVENT_PLUGIN_INTERNALS__: { unregisterListener: () => {} },
+      __TAURI_INTERNALS__: {
+        metadata: {
+          currentWindow: { label: "main" },
+          currentWebview: { label: "main", windowLabel: "main" },
+        },
+        transformCallback: () => 1,
+        unregisterCallback: () => {},
+        convertFileSrc: () => "",
+        invoke: async (command: string, args: { cues?: typeof cues }) => {
+          calls.push({ command, args });
+          if (command === "snapshot") return state;
+          if (command === "save_edit" && args.cues) job.cues = args.cues;
+          return 1;
+        },
+      },
+    });
+  });
+  await page.goto("/");
+}
+
+test("double vérification : inversion puis envoi des moteurs choisis", async ({
+  page,
+}) => {
+  await localReviewFixture(page);
+  await page
+    .getByRole("button", { name: "Double vérification", exact: true })
+    .click();
+  await expect(
+    page.getByLabel("Moteur principal", { exact: true }),
+  ).toHaveValue("ultra");
+  await expect(page.getByLabel("Second avis", { exact: true })).toHaveValue(
+    "whisper-turbo",
+  );
+  await page.getByRole("button", { name: "Inverser les moteurs" }).click();
+  await expect(
+    page.getByLabel("Moteur principal", { exact: true }),
+  ).toHaveValue("whisper-turbo");
+  await expect(page.getByLabel("Second avis", { exact: true })).toHaveValue(
+    "ultra",
+  );
+  await page.getByRole("button", { name: "Transcrire et comparer" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as unknown as {
+              __TEST_CALLS__: Array<{ command: string; args: unknown }>;
+            }
+          ).__TEST_CALLS__.find((c) => c.command === "start_verification")
+            ?.args,
+      ),
+    )
+    .toEqual({
+      id: "review-fixture",
+      primary: "whisper-turbo",
+      secondary: "ultra",
+    });
+});
+
+test("suggestion : validation explicite, mêmes temps et annulation", async ({
+  page,
+}) => {
+  await localReviewFixture(page);
+  await page.getByRole("button", { name: "Ouvrir", exact: true }).click();
+  const text = page.getByRole("textbox", { name: "Sous-titre 1", exact: true });
+  await expect(text).toHaveValue("Je vais sortir ce foir.");
+  const start = await page.getByLabel("Début 1", { exact: true }).inputValue();
+  const end = await page.getByLabel("Fin 1", { exact: true }).inputValue();
+  await page
+    .getByRole("button", { name: "Utiliser cette proposition" })
+    .click();
+  await expect(text).toHaveValue("Je vais sortir ce soir.");
+  await expect(page.getByLabel("Début 1", { exact: true })).toHaveValue(start);
+  await expect(page.getByLabel("Fin 1", { exact: true })).toHaveValue(end);
+  await expect(
+    page.getByRole("button", { name: "Utiliser cette proposition" }),
+  ).toBeDisabled();
+  await page.getByRole("button", { name: "Annuler", exact: true }).click();
+  await expect(text).toHaveValue("Je vais sortir ce foir.");
+  await expect(
+    page.getByRole("button", { name: "Utiliser cette proposition" }),
+  ).toBeEnabled();
+});
+
+test("mise à jour : notification et téléchargement explicite du bon modèle", async ({
+  page,
+}) => {
+  await localReviewFixture(page);
+  await expect(
+    page.getByText("Mise à jour de modèles disponible", { exact: false }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Voir les modèles" }).click();
+  await page
+    .getByRole("button", { name: "Télécharger la mise à jour", exact: true })
+    .click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as unknown as {
+              __TEST_CALLS__: Array<{ command: string; args: unknown }>;
+            }
+          ).__TEST_CALLS__.find((c) => c.command === "install_model")?.args,
+      ),
+    )
+    .toEqual({ engine: "whisper-turbo" });
 });

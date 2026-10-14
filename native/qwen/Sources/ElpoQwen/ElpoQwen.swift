@@ -15,27 +15,31 @@ func qwenRepository(_ engine: String) throws -> String {
 }
 func loadASR(_ directory: URL) async throws { _ = try await Qwen3ASRModel.fromModelDirectory(directory) }
 func loadAligner(_ directory: URL) async throws { _ = try await Qwen3ForcedAlignerModel.fromModelDirectory(directory) }
+func qwenHashes(_ directory: URL) throws -> [String: String] {
+    // Hugging Face download locks/metadata can change when its session closes;
+    // they are not inference assets. Keep all weights/config/tokenizer files.
+    try modelHashes(directory).filter { !$0.key.split(separator: "/").contains(".cache") && !$0.key.hasSuffix(".DS_Store") }
+}
 func installQwen(root: URL, engine: String) async throws {
-    let repo = try qwenRepository(engine)
+    _ = try qwenRepository(engine)
+    let sources = try await latestModelSources(engine)
     let staging = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: staging) }
     let prepared = staging.appendingPathComponent("prepared")
     try FileManager.default.createDirectory(at: prepared, withIntermediateDirectories: true)
     let cache = HubCache(cacheDirectory: staging.appendingPathComponent("downloads"))
-    for (name, id) in [("asr", repo), ("aligner", "mlx-community/Qwen3-ForcedAligner-0.6B-4bit")] {
-        let downloaded = try await ModelUtils.resolveOrDownloadModel(repoID: Repo.ID(rawValue: id)!, requiredExtension: "safetensors", cache: cache)
+    let client = HubClient(cache: cache)
+    for (index, name) in ["asr", "aligner"].enumerated() {
+        let source = sources[index]
         let destination = prepared.appendingPathComponent(name)
-        try FileManager.default.copyItem(at: downloaded, to: destination)
+        _ = try await client.downloadSnapshot(of: Repo.ID(rawValue: source.repository)!, kind: .model, to: destination, revision: source.revision, matching: ["*.safetensors", "*.json", "*.txt"])
         if name == "asr" { try await loadASR(destination) } else { try await loadAligner(destination) }
         Memory.clearCache()
     }
-    let manifest = Manifest(sdk: qwenRevision, files: try modelHashes(prepared))
-    let destination = root.appendingPathComponent(engine)
+    let manifest = Manifest(sdk: qwenRevision, files: try qwenHashes(prepared), sources: sources)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-    if FileManager.default.fileExists(atPath: destination.path) { try FileManager.default.removeItem(at: destination) }
-    try FileManager.default.moveItem(at: prepared, to: destination)
-    try JSONEncoder().encode(manifest).write(to: root.appendingPathComponent(engine + ".json"), options: .atomic)
+    try activateModel(prepared: prepared, root: root, engine: engine, manifest: manifest)
 }
 
 struct Passage { let offset: Int; let samples: Int; let text: String; let language: String }
@@ -96,9 +100,13 @@ func rawAlignment(_ model: Qwen3ForcedAlignerModel, audio: MLXArray, text: Strin
 }
 func transcribeQwen(root: URL, engine: String, source: String, language: String?) async throws {
     _ = try qwenRepository(engine)
-    let directory = root.appendingPathComponent(engine)
     let manifest = try JSONDecoder().decode(Manifest.self, from: Data(contentsOf: root.appendingPathComponent(engine + ".json")))
-    guard manifest.sdk == qwenRevision, manifest.files == (try modelHashes(directory)) else { throw Failure(message: "Intégrité Qwen incorrecte. Réinstallez le modèle.") }
+    let directory = try installedDirectory(root: root, engine: engine, manifest: manifest)
+    let actual = try qwenHashes(directory)
+    guard manifest.sdk == qwenRevision, manifest.files == actual else {
+        let changed = Set(manifest.files.keys).union(actual.keys).filter { manifest.files[$0] != actual[$0] }.sorted().prefix(10)
+        throw Failure(message: "Intégrité Qwen incorrecte. Fichiers différents : " + changed.joined(separator: ", "))
+    }
     let hint: String?
     if let code = language, code != "auto" {
         guard let name = languages[code] else { throw Failure(message: "Langue non prise en charge pour les SRT Qwen. Utilisez Whisper pour l’arabe.") }
@@ -121,7 +129,7 @@ func transcribeQwen(root: URL, engine: String, source: String, language: String?
         Memory.clearCache()
     }
     guard !words.isEmpty else { throw Failure(message: "Aucune parole horodatée détectée par Qwen") }
-    emit(["engine": engine, "modelVersion": qwenRevision, "text": passages.map(\.text).joined(separator: " "), "durationMs": count / 16, "processingTimeMs": try milliseconds(Date().timeIntervalSince(started)), "words": try JSONSerialization.jsonObject(with: JSONEncoder().encode(words))])
+    emit(["engine": engine, "modelVersion": manifest.sources?.map(\.revision).joined(separator: " / ") ?? qwenRevision, "text": passages.map(\.text).joined(separator: " "), "durationMs": count / 16, "processingTimeMs": try milliseconds(Date().timeIntervalSince(started)), "words": try JSONSerialization.jsonObject(with: JSONEncoder().encode(words))])
 }
 
 @main struct ElpoQwen {

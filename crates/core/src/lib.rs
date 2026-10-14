@@ -6,6 +6,7 @@ use std::{
     path::{Path, PathBuf},
 };
 use thiserror::Error;
+pub mod review;
 
 #[derive(Debug, Error)]
 pub enum Error {

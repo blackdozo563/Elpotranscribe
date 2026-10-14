@@ -1,6 +1,14 @@
 #include "CWhisper.h"
 #include "whisper.h"
 #include <string.h>
+int elpo_whisper_validate(const char *model) {
+    struct whisper_context_params params = whisper_context_default_params();
+    params.use_gpu = true;
+    struct whisper_context *ctx = whisper_init_from_file_with_params(model, params);
+    if (!ctx) return 1;
+    whisper_free(ctx);
+    return 0;
+}
 
 // No subprocess: killing the managed helper releases this context and Metal.
 int elpo_whisper(const char *model, const char *language, const float *audio,

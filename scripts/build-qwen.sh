@@ -5,7 +5,7 @@ repository="$PWD"
 # Compile the same protocol, checksum and streaming converter sources in each
 # helper, keeping FluidAudio and MLX in separate processes/dependency graphs.
 mkdir -p native/qwen/Sources/ElpoQwen/Generated
-cp native/swift/Sources/ElpoASR/{Support,Audio}.swift native/qwen/Sources/ElpoQwen/Generated/
+cp native/swift/Sources/ElpoASR/{Support,Audio,ModelUpdates}.swift native/qwen/Sources/ElpoQwen/Generated/
 cd native/qwen
 xcodebuild -list -json -clonedSourcePackagesDirPath "$repository/target/qwen-packages" > "$repository/target/qwen-schemes.json"
 scheme="$(python3 - "$repository/target/qwen-schemes.json" <<'PY'

@@ -4,6 +4,7 @@ Transcription audio intelligente pour macOS Apple Silicon. Interface française,
 
 **Préversion 1.0.0. Le parcours local Parakeet Ultra, la file et le DMG ARM64 ont passé la validation native sur macOS. Les moteurs avancés et la validation physique M1/M2 8 Go restent à compléter : cette préversion ne couvre pas tout le cahier des charges.**
 
+
 Dépôt prévu : https://github.com/blackdozo563/Elpotranscribe
 
 ## Ce que contient le code
@@ -79,8 +80,7 @@ La signature par défaut est ad hoc, non notariée. Pour une distribution Develo
 ## Limites actuelles
 
 - Inférence Ultra, file réelle, exports, backend Rust, signatures et DMG : contrôles natifs réussis en CI ARM64. Dialogues, Finder, lecture dans l’interface et installation sur un Mac propre : tests manuels encore nécessaires.
-- M1 8 Go et M2 8 Go : objectifs, **pas de certification ni de benchmark réalisé**. La surveillance mémoire est une protection supplémentaire, pas une garantie contre tout épuisement mémoire.
-- Qwen3-ASR 0.6B/1.7B, whisper.cpp, comparaison IA, Gemini/Keychain, vocabulaire conditionnant le modèle, import de dictionnaires, nettoyage fluide, forme d’onde et mise à jour automatique : non implémentés. Aucun moteur incomplet n’est proposé à la sélection.
+- M2 8 Go : retour utilisateur positif sur la qualité de Parakeet Ultra le 14 octobre 2026. Protocole complet M1/M2 et mesures de performances encore à réaliser. La surveillance mémoire est une protection supplémentaire, pas une garantie contre tout épuisement mémoire.
 - L’arabe n’est pas pris en charge par le moteur Ultra de cette version ; les fonctions d’édition/export Unicode sont testées avec du texte arabe.
 - MP3/WAV/M4A/AAC/FLAC/AIFF passent par AVFoundation. OGG et WebM dépendent des codecs système ; les formats non décodables sont refusés, sans FFmpeg embarqué actuellement.
 - La liste de vocabulaire est une référence locale pour la relecture ; elle ne corrige pas automatiquement la transcription.

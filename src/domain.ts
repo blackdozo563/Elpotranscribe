@@ -7,6 +7,7 @@ export interface Settings {
   engine: string;
   language: string;
   autoSave: boolean;
+  autoModelUpdates: boolean;
   subtitles: { lineLength: number; maxLines: number; maxDurationMs: number };
   vocabulary: string[];
 }
@@ -25,6 +26,31 @@ export interface Job {
   createdAt: number;
   engine: string;
   language: string;
+  modelVersion?: string | null;
+  verificationStatus?: string | null;
+  verificationError?: string | null;
+  verification?: {
+    secondaryEngine: string;
+    secondaryVersion: string;
+    referenceCues: Cue[];
+    review: {
+      approximate: boolean;
+      differences: Array<{
+        cueIndex: number;
+        primaryText: string;
+        candidateText: string | null;
+        alternativeText: string;
+      }>;
+    };
+  } | null;
+}
+export interface ModelUpdate {
+  engine: string;
+  status: "current" | "available" | "unknown" | "error";
+  installedRevision: string | null;
+  latestRevision: string | null;
+  checkedAt: number;
+  error: string | null;
 }
 export interface Snapshot {
   jobs: Job[];
@@ -32,6 +58,7 @@ export interface Snapshot {
   busy: boolean;
   modelInstalled: boolean;
   installedModels: string[];
+  modelUpdates: ModelUpdate[];
   platform: string;
 }
 export function validate(cues: Cue[]) {
