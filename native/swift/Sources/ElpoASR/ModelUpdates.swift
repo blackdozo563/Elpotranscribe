@@ -17,9 +17,7 @@ struct ModelUpdate: Codable, Sendable {
 func modelRepositories(_ engine: String) throws -> [String] {
     switch engine {
     case "ultra": return ["FluidInference/parakeet-ultra-coreml"]
-    case "whisper-base", "whisper-small", "whisper-turbo": return ["ggerganov/whisper.cpp"]
-    case "qwen-0.6b": return ["mlx-community/Qwen3-ASR-0.6B-4bit", "mlx-community/Qwen3-ForcedAligner-0.6B-4bit"]
-    case "qwen-1.7b": return ["mlx-community/Qwen3-ASR-1.7B-4bit", "mlx-community/Qwen3-ForcedAligner-0.6B-4bit"]
+    case "whisper-turbo": return ["ggerganov/whisper.cpp"]
     default: throw Failure(message: "Catalogue de modèles inconnu")
     }
 }
@@ -62,7 +60,7 @@ func sameModelAssets(_ a: [ModelSource], _ b: [ModelSource]) -> Bool {
 }
 func modelMarker(root: URL, engine: String) -> URL { root.appendingPathComponent(engine == "ultra" ? "verified.json" : engine + ".json") }
 func checkModelUpdates(root: URL) async throws -> [ModelUpdate] {
-    let engines = ["ultra", "whisper-base", "whisper-small", "whisper-turbo", "qwen-0.6b", "qwen-1.7b"].filter { FileManager.default.fileExists(atPath: modelMarker(root: root, engine: $0).path) }
+    let engines = ["ultra", "whisper-turbo"].filter { FileManager.default.fileExists(atPath: modelMarker(root: root, engine: $0).path) }
     // Independent metadata requests share no model state and do not load weights.
     return await withTaskGroup(of: ModelUpdate.self) { group in
         for engine in engines {

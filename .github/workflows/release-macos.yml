@@ -58,18 +58,17 @@ jobs:
           path: |
             target
             native/swift/.build
-          key: macos-arm64-${{ hashFiles('Cargo.lock', 'native/swift/Package.swift', 'native/qwen/Package.resolved') }}-${{ github.run_id }}
+          key: macos-arm64-${{ hashFiles('Cargo.lock', 'native/swift/Package.swift') }}-${{ github.run_id }}
           restore-keys: |
-            macos-arm64-${{ hashFiles('Cargo.lock', 'native/swift/Package.swift', 'native/qwen/Package.resolved') }}-
+            macos-arm64-${{ hashFiles('Cargo.lock', 'native/swift/Package.swift') }}-
             macos-arm64-
       - run: npm ci
       - name: Build native engines
         run: |
           mkdir -p target
-          # Release validation starts without cached weights. Experimental Qwen
-          # outputs belong to its separate workflow, not this release cache.
-          rm -rf target/smoke-models target/qwen-packages target/qwen-xcode
-          rm -f target/smoke-result.json target/smoke-result.srt target/smoke-whisper-*.json target/smoke-whisper-*.srt target/smoke-qwen-*.json target/smoke-qwen-*.srt
+          # Release validation starts without cached weights.
+          rm -rf target/smoke-models
+          rm -f target/smoke-result.json target/smoke-result.srt target/smoke-whisper-*.json target/smoke-whisper-*.srt
           set +e
           set -o pipefail
           npm run native:build 2>&1 | tee target/native-build.log
@@ -125,8 +124,6 @@ jobs:
             target/smoke-result.srt
             target/smoke-whisper-*.json
             target/smoke-whisper-*.srt
-            target/smoke-qwen-*.json
-            target/smoke-qwen-*.srt
           if-no-files-found: ignore
       - uses: actions/cache/save@v4
         if: always()
@@ -151,7 +148,7 @@ jobs:
           path: |
             target
             native/swift/.build
-          key: macos-arm64-${{ hashFiles('Cargo.lock', 'native/swift/Package.swift', 'native/qwen/Package.resolved') }}-${{ github.run_id }}
+          key: macos-arm64-${{ hashFiles('Cargo.lock', 'native/swift/Package.swift') }}-${{ github.run_id }}
       - uses: actions/download-artifact@v4
         with:
           name: ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.2.0

@@ -9,5 +9,3 @@ Modèle Parakeet Ultra : consulter les conditions et licences effectives de `Flu
 Fixture `fixtures/jfk.json` : extrait du discours présidentiel américain du 20 janvier 1961, enregistrement du gouvernement fédéral, domaine public aux États-Unis (17 USC 105), distribué par les exemples de whisper.cpp. URL et SHA-256 épinglés ; téléchargement uniquement pendant les tests, aucun audio utilisateur committé. Vérifier les droits applicables à la destination de distribution.
 
 L’icône SVG a été créée pour ce projet, sans marque tierce.
-
-Whisper large-v3-turbo est le modèle OpenAI ; le fichier GGML Q5_0 provient de `ggerganov/whisper.cpp` sur Hugging Face. Vérifier les notices MIT du modèle et du moteur lors de toute redistribution des poids. Qwen et son aligneur restent expérimentaux : consulter les licences de leurs dépôts et des conversions MLX avant redistribution. Les poids ne sont pas embarqués dans le DMG.

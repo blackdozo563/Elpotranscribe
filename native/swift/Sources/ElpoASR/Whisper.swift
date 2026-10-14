@@ -8,8 +8,6 @@ struct WhisperModel {
     let name: String
     static func get(_ engine: String) throws -> WhisperModel {
         switch engine {
-        case "whisper-base": return WhisperModel(name: "base")
-        case "whisper-small": return WhisperModel(name: "small")
         case "whisper-turbo": return WhisperModel(name: "large-v3-turbo-q5_0")
         default: throw Failure(message: "Moteur Whisper inconnu")
         }

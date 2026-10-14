@@ -145,16 +145,6 @@ impl AppState {
     fn installed(&self, engine: &str) -> bool {
         self.model_marker(engine).is_file()
     }
-    fn qwen_helper(&self) -> PathBuf {
-        let bundled = self.data.helper.with_file_name("elpo-qwen");
-        if bundled.is_file() {
-            bundled
-        } else {
-            self.data
-                .helper
-                .with_file_name("elpo-qwen-aarch64-apple-darwin")
-        }
-    }
     fn model_marker(&self, engine: &str) -> PathBuf {
         self.models().join(if engine == "ultra" {
             "verified.json".into()
@@ -217,12 +207,7 @@ impl AppState {
                 .prefix("elpotranscribe-")
                 .tempdir()
                 .map_err(err)?;
-            let helper =
-                if ["qwen-0.6b", "qwen-1.7b"].contains(&request["engine"].as_str().unwrap_or("")) {
-                    self.qwen_helper()
-                } else {
-                    self.data.helper.clone()
-                };
+            let helper = self.data.helper.clone();
             let mut child = Command::new(helper)
                 .env("TMPDIR", temporary.path())
                 .stdin(Stdio::piped())
@@ -287,18 +272,11 @@ impl AppState {
             settings: s.settings.clone(),
             busy,
             model_installed: self.installed(&s.settings.engine),
-            installed_models: [
-                "ultra",
-                "whisper-base",
-                "whisper-small",
-                "whisper-turbo",
-                "qwen-0.6b",
-                "qwen-1.7b",
-            ]
-            .into_iter()
-            .filter(|e| self.installed(e))
-            .map(str::to_owned)
-            .collect(),
+            installed_models: ["ultra", "whisper-turbo"]
+                .into_iter()
+                .filter(|e| self.installed(e))
+                .map(str::to_owned)
+                .collect(),
             model_updates: fs::read(self.data.root.join("model-updates.json"))
                 .ok()
                 .and_then(|data| serde_json::from_slice::<Vec<serde_json::Value>>(&data).ok())
@@ -486,13 +464,8 @@ fn start_verification(
             return Err("L’audio a été déplacé. Reliez-le avant la comparaison".into());
         }
         let settings = store.settings.clone();
-        if job.language == "ar"
-            && (primary == "ultra"
-                || secondary == "ultra"
-                || primary.starts_with("qwen-")
-                || secondary.starts_with("qwen-"))
-        {
-            return Err("Pour l’arabe, choisissez deux modèles Whisper ; l’aligneur Qwen et Ultra ne prennent pas cette langue en charge".into());
+        if job.language == "ar" && (primary == "ultra" || secondary == "ultra") {
+            return Err("La double vérification avec Ultra ne prend pas l’arabe en charge".into());
         }
         job.id = uuid::Uuid::new_v4().to_string();
         job.created_at = now();
@@ -526,16 +499,7 @@ fn start_verification(
     }
 }
 fn check_engine(engine: &str) -> Result<(), String> {
-    if [
-        "ultra",
-        "whisper-base",
-        "whisper-small",
-        "whisper-turbo",
-        "qwen-0.6b",
-        "qwen-1.7b",
-    ]
-    .contains(&engine)
-    {
+    if ["ultra", "whisper-turbo"].contains(&engine) {
         Ok(())
     } else {
         Err("Moteur non pris en charge".into())
@@ -930,8 +894,7 @@ fn save_settings(state: State<'_, AppState>, settings: Settings) -> Result<(), S
     check_engine(&settings.engine)?;
     settings.subtitles.validate().map_err(err)?;
     if !["auto", "fr", "en", "es", "de", "it", "pt", "ar"].contains(&settings.language.as_str())
-        || ((settings.engine == "ultra" || settings.engine.starts_with("qwen-"))
-            && settings.language == "ar")
+        || (settings.engine == "ultra" && settings.language == "ar")
     {
         return Err("Langue non prise en charge".into());
     }

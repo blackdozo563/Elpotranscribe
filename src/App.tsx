@@ -60,18 +60,7 @@ const icons = [LayoutDashboard, Plus, History, ScanText, Boxes, Settings2];
 const localEngines = [
   { id: "ultra", name: "Parakeet Ultra", disabled: false },
   { id: "whisper-turbo", name: "Whisper large-v3-turbo Q5_0", disabled: false },
-  { id: "whisper-small", name: "Whisper Small", disabled: false },
-  { id: "whisper-base", name: "Whisper Base", disabled: false },
-  {
-    id: "qwen-0.6b",
-    name: "Qwen3-ASR 0.6B · validation en cours",
-    disabled: true,
-  },
-  {
-    id: "qwen-1.7b",
-    name: "Qwen3-ASR 1.7B · validation en cours",
-    disabled: true,
-  },
+
 ];
 const engineName = (id: string) =>
   localEngines.find((engine) => engine.id === id)?.name ?? id;
@@ -448,13 +437,6 @@ export default function App() {
                         <option value="whisper-turbo">
                           Qualité — Whisper large-v3-turbo · Q5_0 · Metal
                         </option>
-
-                        <option value="whisper-base">
-                          Secours léger — Whisper Base · Metal
-                        </option>
-                        <option value="whisper-small">
-                          Multilingue — Whisper Small · Metal
-                        </option>
                       </select>
                     </label>
                     <label>
@@ -791,19 +773,6 @@ export default function App() {
                       description:
                         "Option de qualité pour le français et l’anglais US/UK. Quantification Q5 pour limiter la mémoire. Performances M2 8 Go à mesurer.",
                     },
-                    {
-                      id: "whisper-base",
-                      name: "Whisper Base",
-                      size: "142 Mio",
-                      description: "Modèle léger de secours.",
-                    },
-                    {
-                      id: "whisper-small",
-                      name: "Whisper Small",
-                      size: "466 Mio",
-                      description:
-                        "Alternative multilingue plus volumineuse que Base.",
-                    },
                   ].map((model) => (
                     <section className="panel model-card" key={model.id}>
                       <h2>{model.name}</h2>
@@ -858,15 +827,7 @@ export default function App() {
                       />
                     </section>
                   ))}
-                  <div className="panel info-panel">
-                    <h3>Intégrations avancées en attente</h3>
-                    <p>
-                      Qwen3-ASR 0.6B / 1.7B ne sont pas encore activés dans
-                      cette version de développement. Ils ne sont pas
-                      sélectionnables. Les validations sur M1 et M2 8 Go restent
-                      nécessaires.
-                    </p>
-                  </div>
+
                 </>
               )}
               {page === 3 && (
@@ -1056,12 +1017,6 @@ function VerificationPanel({
               </button>
             ))}
           </div>
-        )}
-        {(primary === "qwen-1.7b" || secondary === "qwen-1.7b") && (
-          <p>
-            Le modèle Qwen 1.7B peut demander davantage de mémoire. La
-            compatibilité complète M1/M2 8 Go reste à valider.
-          </p>
         )}
         <p>
           La comparaison ignore la casse et la ponctuation. Les divergences

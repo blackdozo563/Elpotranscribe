@@ -11,7 +11,6 @@ La [préversion publiée 1.1.0](https://github.com/blackdozo563/Elpotranscribe/r
 - **Double vérification : deux moteurs locaux au choix**, utilisés successivement. Le bouton « Inverser les moteurs » échange le principal et le second avis. Un nouveau résultat conserve le texte et les temps du principal ; les divergences lexicales sont proposées à la relecture. Accepter une proposition modifie uniquement le texte, avec possibilité d’annuler. Aucun pourcentage de confiance inventé ni correction silencieuse.
 - **Mises à jour des modèles :** vérification de métadonnées au démarrage puis toutes les six heures lorsque l’application est ouverte et libre, désactivable dans les paramètres ; vérification manuelle et téléchargement explicite dans Modèles IA. Les nouveaux fichiers sont téléchargés et initialisés dans un dossier séparé ; le manifeste est remplacé atomiquement après réussite. Une erreur conserve le modèle précédent. Une ancienne installation sans provenance affiche une version inconnue, jamais « à jour » sans preuve.
 - **Entièrement local, sans Gemini.** Les connexions servent aux métadonnées de versions et aux téléchargements demandés. Aucun audio n’est envoyé. La transcription après installation ne nécessite pas de compte cloud.
-- Qwen3-ASR 0.6B/1.7B reste un chantier séparé, désactivé dans les sélecteurs et absent du DMG 1.1.0. Canary et le nettoyage par LLM ne sont pas intégrés.
 
 La [validation native du code 1.1.0](https://github.com/blackdozo563/Elpotranscribe/actions/runs/38608950390) a réussi : DMG ARM64, installations sans poids en cache, Ultra, Whisper Base/Small/Turbo, file, SRT, annulation, intégrité, métadonnées de versions et double vérification dans les deux sens. Contrôles : 18 tests Rust, 5 TypeScript, 6 navigateur (IPC simulé), 10 Swift et 5 scénarios natifs. Cela ne remplace pas un benchmark de précision ou les essais physiques M1/M2 8 Go. Voir [docs/VALIDATION.md](docs/VALIDATION.md).
 
@@ -67,7 +66,6 @@ npm run tauri -- build --target aarch64-apple-darwin -- --locked
 bash scripts/validate-dmg.sh target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
 ```
 
-La validation monte le DMG, vérifie ARM64 et les signatures, exécute une vraie transcription avec Ultra et chaque modèle Whisper, produit des SRT, vérifie la file, les exports par dossier, l’annulation, le rejet des poids altérés, les métadonnées de versions et la double vérification dans les deux sens. Qwen est évalué séparément dans `qwen-validation.yml`.
 
 Les utilisateurs du DMG n’ont besoin ni de Python, ni de Node, ni de Homebrew. La signature par défaut est ad hoc, non notariée. Vérifier la provenance et SHA-256 ; si nécessaire, utiliser l’autorisation ciblée de macOS, sans désactiver Gatekeeper globalement. Voir [docs/MACOS.md](docs/MACOS.md).
 
@@ -83,7 +81,6 @@ Les utilisateurs du DMG n’ont besoin ni de Python, ni de Node, ni de Homebrew.
 
 - Les performances Turbo et la double vérification sur **M1/M2 physiques 8 Go** restent à mesurer. Un seul processus d’inférence tourne à la fois ; un contrôle de mémoire physique et un arrêt sur pression mémoire critique ne garantissent pas l’absence de swap ou d’épuisement mémoire.
 - Deux modèles peuvent faire la même erreur. Les divergences sont lexicales ; elles ne constituent ni une détection exhaustive d’erreurs, ni un jugement sur le bon texte. L’alignement mot à mot reste à évaluer contre une vérité terrain.
-- Ultra ne prend pas l’arabe en charge. Whisper le propose ; Qwen ASR le reconnaît mais son aligneur officiel ne le prend pas en charge dans cette intégration SRT.
 - MP3/WAV/M4A/AAC/FLAC/AIFF utilisent AVFoundation. OGG et WebM dépendent des codecs système ; les fichiers non décodables sont refusés. Aucun FFmpeg embarqué.
 - Les dialogues, Finder, l’installation sur Mac propre et les essais entièrement déconnectés restent à vérifier manuellement. Pas de sandbox App Store ni de signets de sécurité persistants.
 - Le vocabulaire personnalisé sert de référence pour la relecture, sans correction automatique. La fermeture interrompt le traitement ; le résultat principal déjà obtenu est conservé pour une vérification interrompue.

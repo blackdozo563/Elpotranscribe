@@ -49,7 +49,7 @@ Source : `26d89ff7a28e26a8740f1e1f28c3c4dd5e282444`, tag `v1.1.0`. [Validation n
 | Swift XCTest | 10 exécutés et réussis |
 | App et DMG ARM64 | Créés, montés et signatures ad hoc vérifiées |
 | Installation des modèles | Réussie dans un dossier temporaire sans poids en cache |
-| Inférence depuis le DMG | Ultra, Whisper Base, Small et large-v3-turbo Q5_0 réussis |
+| Inférence depuis le DMG | Ultra, Whisper large-v3-turbo Q5_0 réussis |
 | File native, exports et annulation | 4 scénarios, un par moteur, réussis ; audios préservés, dossiers distincts, erreur récupérée et temporaires nettoyés |
 | Intégrité Whisper | Poids altérés refusés avant inférence pour Base, Small et Turbo |
 | Métadonnées de modèles | Les quatre installations sont reconnues à jour après installation |
@@ -61,7 +61,6 @@ Les tests Swift couvrent les empreintes et chemins relatifs (y compris les alias
 
 Les tests Rust de comparaison couvrent « ce foir »/« ce soir », les moteurs inversés sans attribuer arbitrairement une victoire, la casse/ponctuation, Unicode, les insertions/suppressions, les frontières ambiguës et le contexte borné pour les longues divergences. Ce sont des tests de comparaison textuelle ; aucun essai acoustique du passage utilisateur « ce soir » n’a été effectué, son audio n’étant pas fourni.
 
-La CI vérifie le fonctionnement, pas une supériorité de précision française/anglaise entre modèles. La précision des mots et des temps n’a pas été mesurée contre une vérité terrain annotée. Les mesures éventuelles de temps/RSS du runner ne décrivent pas un M2 8 Go ni la consommation totale de l’application. Les essais physiques M1/M2 8 Go de Turbo, l’installation sur Mac propre, l’usage totalement déconnecté et les dialogues/Finder restent à réaliser. Gemini est supprimé. Qwen reste expérimental, désactivé et absent du DMG.
 
 ## Préversion 1.1.1 : publication bloquée par le test long
 

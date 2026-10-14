@@ -6,7 +6,6 @@
 - Double vérification locale séquentielle, moteurs inversables et propositions annulables conservant les temps du principal.
 - Notifications de versions des modèles, téléchargement explicite et activation atomique après vérification.
 - Suppression de Gemini ; aucun compte cloud requis.
-- Pont Qwen 0.6B/1.7B 4-bit et alignement sans interpolation, non activé avant validation native.
 - DMG ARM64, installations à neuf, vraie inférence des quatre moteurs, métadonnées et double vérification validés en CI.
 - Contrôles : 18 Rust, 5 TypeScript, 6 navigateur, 10 Swift et 5 scénarios natifs ; tests physiques des nouveaux parcours sur M1/M2 8 Go en attente.
 

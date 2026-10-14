@@ -15,22 +15,13 @@ test("interface française vide et fonctions natives explicitement indiquées", 
   await expect(page.getByRole("alert")).toContainText("Mac Apple Silicon");
   expect(errors).toEqual([]);
 });
-test("modèles non intégrés jamais proposés comme disponibles", async ({
-  page,
-}) => {
+test("seuls Ultra et Whisper Turbo sont proposés", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Modèles IA", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "Parakeet Ultra", exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Qwen3-ASR 0.6B / 1.7B", {
-      exact: false,
-    }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Installer Parakeet Ultra" }),
-  ).toBeEnabled();
+  await expect(page.getByRole("heading", { name: "Parakeet Ultra", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Whisper large-v3-turbo Q5_0", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Installer Parakeet Ultra" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: /^Installer / })).toHaveCount(2);
 });
 test("éditeur : modification, annulation et export par le pont natif simulé", async ({
   page,
