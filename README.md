@@ -2,9 +2,9 @@
 
 Transcription audio pour macOS 14+ Apple Silicon. Interface française, traitement local, édition et exports SRT/TXT/VTT/ZIP.
 
-La [préversion publiée 1.0.0](https://github.com/blackdozo563/Elpotranscribe/releases/tag/v1.0.0) utilise Parakeet Ultra. L’utilisateur rapporte un bon résultat sur **M2 8 Go**. Ce retour ne constitue pas un benchmark complet.
+La [préversion publiée 1.1.0](https://github.com/blackdozo563/Elpotranscribe/releases/tag/v1.1.0) propose Parakeet Ultra, Whisper et leur double vérification locale. L’utilisateur rapporte un bon résultat avec Ultra sur **M2 8 Go** ; les nouveaux parcours restent à mesurer sur cette configuration.
 
-## Version 1.1.0 en développement
+## Préversion 1.1.0
 
 - **Rapide : Parakeet Ultra**, moteur par défaut.
 - **Qualité : Whisper large-v3-turbo Q5_0**, exécuté avec whisper.cpp et Metal. Base et Small restent disponibles comme options plus légères. « Qualité » indique le choix du moteur, pas une supériorité garantie pour chaque audio.
@@ -13,7 +13,7 @@ La [préversion publiée 1.0.0](https://github.com/blackdozo563/Elpotranscribe/r
 - **Entièrement local, sans Gemini.** Les connexions servent aux métadonnées de versions et aux téléchargements demandés. Aucun audio n’est envoyé. La transcription après installation ne nécessite pas de compte cloud.
 - Qwen3-ASR 0.6B/1.7B reste un chantier séparé, désactivé dans les sélecteurs et absent du DMG 1.1.0. Canary et le nettoyage par LLM ne sont pas intégrés.
 
-La validation native du nouveau code est en cours. Ultra et Whisper Base/Small ont déjà passé une [validation du DMG sur ARM64](https://github.com/blackdozo563/Elpotranscribe/actions/runs/38595539654) dans une révision antérieure. Cela ne valide pas automatiquement Turbo, les mises à jour ou la double vérification actuels. Voir [docs/VALIDATION.md](docs/VALIDATION.md).
+La [validation native du code 1.1.0](https://github.com/blackdozo563/Elpotranscribe/actions/runs/38608950390) a réussi : DMG ARM64, installations sans poids en cache, Ultra, Whisper Base/Small/Turbo, file, SRT, annulation, intégrité, métadonnées de versions et double vérification dans les deux sens. Contrôles : 18 tests Rust, 5 TypeScript, 6 navigateur (IPC simulé), 10 Swift et 5 scénarios natifs. Cela ne remplace pas un benchmark de précision ou les essais physiques M1/M2 8 Go. Voir [docs/VALIDATION.md](docs/VALIDATION.md).
 
 ## Fonctions
 

@@ -37,10 +37,28 @@ Le flag réseau désactivé de FluidAudio est utilisé pendant chaque transcript
 
 Le 14 octobre 2026, l’utilisateur indique avoir testé la version avec Parakeet Ultra sur un **Mac M2 8 Go**, avec un résultat jugé « top ». Ce retour confirme un essai utilisateur réussi de transcription sur cette configuration. Version de macOS, identifiant exact du build, durée/format/langue de l’audio, temps de calcul et pic mémoire non communiqués. Il ne valide pas les nouveaux moteurs et ne remplace pas le protocole complet de tests physiques.
 
-## Développement 1.1.0
+## Préversion 1.1.0
 
-Validation portable actuelle : 17 tests Rust (dont quatre de comparaison lexicale), cinq tests TypeScript et six tests navigateur réussis. Les trois nouveaux scénarios navigateur vérifient l’inversion des moteurs, l’application annulable d’une suggestion sans modifier les temps, et le téléchargement explicite depuis la notification de mise à jour. L’IPC y est simulé : aucune inférence prouvée par ces tests.
+Source : `26d89ff7a28e26a8740f1e1f28c3c4dd5e282444`, tag `v1.1.0`. [Validation native de publication](https://github.com/blackdozo563/Elpotranscribe/actions/runs/38608950390), runner macOS 15 ARM64, Xcode 26.3 / Swift 6.2.
 
-[La révision 802fe1c a passé la validation native](https://github.com/blackdozo563/Elpotranscribe/actions/runs/38595539654) : DMG ARM64, Ultra, Whisper Base/Small, file et véritables exports SRT. Cette ancienne validation contenait aussi des fonctions retirées depuis. Elle ne valide pas les nouveaux parcours actuels.
+| Contrôle | Résultat |
+|---|---|
+| Build TypeScript/Vite et tests de l’éditeur | Réussis ; 5 tests |
+| Rust `elpo-core`, formatage, Clippy | Réussis ; 18 tests, dont cinq de comparaison |
+| Chromium/Playwright | 6 réussis, IPC simulé uniquement |
+| Swift XCTest | 10 exécutés et réussis |
+| App et DMG ARM64 | Créés, montés et signatures ad hoc vérifiées |
+| Installation des modèles | Réussie dans un dossier temporaire sans poids en cache |
+| Inférence depuis le DMG | Ultra, Whisper Base, Small et large-v3-turbo Q5_0 réussis |
+| File native, exports et annulation | 4 scénarios, un par moteur, réussis ; audios préservés, dossiers distincts, erreur récupérée et temporaires nettoyés |
+| Intégrité Whisper | Poids altérés refusés avant inférence pour Base, Small et Turbo |
+| Métadonnées de modèles | Les quatre installations sont reconnues à jour après installation |
+| Double vérification native | 1 scénario réussi : Ultra puis Turbo, et Turbo puis Ultra ; texte/temps du principal et historique préservés |
 
-La nouvelle CI doit encore confirmer les dix tests Swift, Turbo Q5_0, les mises à jour et la double vérification réelle dans les deux sens depuis le DMG. Qwen a été compilé sur macOS ; son essai d’inférence a échoué au contrôle d’intégrité. Le correctif en développement n’est pas encore validé ; les sélecteurs restent désactivés.
+Les tests navigateur vérifient notamment l’inversion des moteurs, l’application annulable d’une suggestion sans modifier les temps, et le téléchargement explicite depuis la notification de mise à jour. Ils ne prouvent pas l’inférence : celle-ci est exercée séparément sur Mac avec le vrai extrait JFK anglais.
+
+Les tests Swift couvrent les empreintes et chemins relatifs (y compris les alias `/var` et `/private/var`), la conservation de l’ancienne installation après échec d’activation, la sélection atomique d’un nouveau dossier, les chemins invalides et la distinction entre changement du README et changement des poids. Le test de disposition Ultra compare le dossier attendu au nom fourni par le SDK. Le vocabulaire et les modèles Ultra utilisent la même révision distante épinglée.
+
+Les tests Rust de comparaison couvrent « ce foir »/« ce soir », les moteurs inversés sans attribuer arbitrairement une victoire, la casse/ponctuation, Unicode, les insertions/suppressions, les frontières ambiguës et le contexte borné pour les longues divergences. Ce sont des tests de comparaison textuelle ; aucun essai acoustique du passage utilisateur « ce soir » n’a été effectué, son audio n’étant pas fourni.
+
+La CI vérifie le fonctionnement, pas une supériorité de précision française/anglaise entre modèles. La précision des mots et des temps n’a pas été mesurée contre une vérité terrain annotée. Les mesures éventuelles de temps/RSS du runner ne décrivent pas un M2 8 Go ni la consommation totale de l’application. Les essais physiques M1/M2 8 Go de Turbo, l’installation sur Mac propre, l’usage totalement déconnecté et les dialogues/Finder restent à réaliser. Gemini est supprimé. Qwen reste expérimental, désactivé et absent du DMG.

@@ -1,6 +1,6 @@
-# Intégrations 1.1.0 en cours de validation
+# Moteurs et vérification locale — 1.1.0
 
-La version publiée 1.0.0 contient uniquement Parakeet Ultra. Le code de développement 1.1.0 ajoute les parcours suivants ; la présence du code ne prouve pas leur validation sur les Mac cibles.
+La préversion publiée 1.1.0 contient Ultra, Whisper Base/Small/Turbo, les mises à jour de modèles et leur double vérification. Ces parcours ont passé la CI native ; les mesures physiques M1/M2 8 Go restent à réaliser. Qwen demeure expérimental hors DMG.
 
 ## Whisper
 
@@ -10,7 +10,7 @@ Base, Small et large-v3-turbo Q5_0 sont téléchargés explicitement depuis une 
 
 AVFoundation décode et rééchantillonne par buffers vers un fichier Float32 16 kHz mono. whisper.cpp lit une projection mémoire de ce fichier. Les jetons UTF-8 sont regroupés en mots avec leurs temps calculés par whisper.cpp. Une chronologie manquante ou invalide provoque une erreur, jamais une distribution uniforme sur la durée audio.
 
-La CI doit exécuter Base, Small et Turbo depuis le moteur du DMG, produire de vrais SRT, puis vérifier la file, l’export dans chaque dossier, l’annulation, le nettoyage et le rejet d’un modèle altéré. Whisper Base et Small ont passé la validation du DMG ; large-v3-turbo Q5 et le nouveau suivi de versions restent à valider.
+La CI de publication a exécuté Base, Small et Turbo depuis le moteur du DMG, produit de vrais SRT et vérifié la file, l’export dans chaque dossier, l’annulation, le nettoyage, le rejet des poids altérés et les métadonnées de versions. La double vérification Ultra/Turbo a réussi dans les deux sens. Voir [VALIDATION.md](VALIDATION.md).
 
 ## Qwen
 
