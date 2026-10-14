@@ -40,7 +40,7 @@ final class ModelUpdateTests: XCTestCase {
     func testLegacyUltraDirectoryKeepsSdkFolderName() throws {
         let root = URL(fileURLWithPath: "/models")
         let manifest = Manifest(sdk: "legacy", files: [:])
-        XCTAssertEqual(try installedDirectory(root: root, engine: "ultra", manifest: manifest).lastPathComponent, "parakeet-ultra-coreml")
+        XCTAssertEqual(try installedDirectory(root: root, engine: "ultra", manifest: manifest).lastPathComponent, ultraSDKFolderName)
     }
     func testUnsafeModelDirectoryIsRejected() {
         XCTAssertThrowsError(try installedDirectory(root: URL(fileURLWithPath: "/models"), engine: "ultra", manifest: Manifest(sdk: "fixture", files: [:], directory: "../../audio")))

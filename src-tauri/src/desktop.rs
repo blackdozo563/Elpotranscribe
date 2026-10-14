@@ -716,7 +716,7 @@ async fn remove_model(
             .and_then(|data| serde_json::from_slice::<serde_json::Value>(&data).ok())
             .and_then(|value| value["directory"].as_str().map(str::to_owned));
         let folder = if engine == "ultra" {
-            "parakeet-ultra-coreml"
+            "parakeet-ultra"
         } else {
             &engine
         };

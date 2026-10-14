@@ -3,6 +3,8 @@ import AVFoundation
 import CryptoKit
 import FluidAudio
 
+let ultraSDKFolderName = Repo.parakeetUltra.folderName
+
 @main struct ElpoASR {
     static func main() async {
         // The parent kills this single helper process on cancellation, releasing Core ML resources.
@@ -41,7 +43,7 @@ import FluidAudio
                 let sources = try await latestModelSources("ultra")
                 let staging = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
                 defer { try? FileManager.default.removeItem(at: staging) }
-                let directory = staging.appendingPathComponent(Repo.parakeetUltra.folderName)
+                let directory = staging.appendingPathComponent(ultraSDKFolderName)
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
                 ModelRegistry.revisionOverrides = [Repo.parakeetUltra.remotePath: sources[0].revision]
                 let vocab = ModelNames.ASR.vocabularyFile
@@ -49,6 +51,9 @@ import FluidAudio
                 let (vocabulary, response) = try await URLSession.shared.data(from: vocabURL)
                 guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw Failure(message: "Vocabulaire du modèle indisponible ; version installée conservée") }
                 try vocabulary.write(to: directory.appendingPathComponent(vocab))
+                // Pinned SDK cache marker: keeps its downloader from purging the
+                // pinned vocabulary before downloading the missing model bundles.
+                try Data(sources[0].revision.utf8).write(to: directory.appendingPathComponent(".fluidaudio-revision"))
                 ModelHub.offlineMode = false
                 let models = try await AsrModels.downloadAndLoad(to: directory, version: .ultra)
                 let manager = AsrManager(); try await manager.loadModels(models); await manager.cleanup()
