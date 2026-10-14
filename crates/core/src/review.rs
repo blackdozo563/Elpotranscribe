@@ -83,12 +83,19 @@ pub fn compare(primary: &[Cue], secondary: &[Word]) -> Result<Review> {
             .map(|token| token.0)
             .collect::<Vec<_>>()
             .join(" ");
+        // A long replacement may cover thousands of cues. Store bounded
+        // context per cue instead of duplicating the entire second transcript.
+        let mut characters = replacement.chars();
+        let mut context: String = characters.by_ref().take(320).collect();
+        if characters.next().is_some() {
+            context.push('…');
+        }
         if !before.is_empty() {
             let first = &old[before.start];
             let last = &old[before.end - 1];
             for cue in first.cue..=last.cue {
                 flagged[cue] = true;
-                alternatives[cue].push(replacement.clone());
+                alternatives[cue].push(context.clone());
                 if first.cue != last.cue {
                     ambiguous[cue] = true;
                 }
@@ -105,7 +112,7 @@ pub fn compare(primary: &[Cue], secondary: &[Word]) -> Result<Review> {
                     for cue in [previous.cue, next.cue] {
                         flagged[cue] = true;
                         ambiguous[cue] = true;
-                        alternatives[cue].push(replacement.clone());
+                        alternatives[cue].push(context.clone());
                     }
                     continue;
                 }
@@ -117,7 +124,7 @@ pub fn compare(primary: &[Cue], secondary: &[Word]) -> Result<Review> {
                 (anchor.end, format!(" {replacement}"))
             };
             flagged[anchor.cue] = true;
-            alternatives[anchor.cue].push(replacement);
+            alternatives[anchor.cue].push(context);
             edits[anchor.cue].push((at, at, text));
         }
     }
@@ -195,6 +202,24 @@ mod tests {
             .unwrap()
             .differences
             .is_empty());
+    }
+    #[test]
+    fn long_disagreement_bounds_context_without_inventing_a_correction() {
+        let primary = vec![
+            cue("bonjour"),
+            Cue {
+                start_ms: 2600,
+                end_ms: 4000,
+                text: "Paris".into(),
+            },
+        ];
+        let secondary = words(&"different ".repeat(1000));
+        let review = compare(&primary, &secondary).unwrap();
+        assert_eq!(review.differences.len(), 2);
+        for difference in review.differences {
+            assert!(difference.candidate_text.is_none());
+            assert!(difference.alternative_text.chars().count() <= 321);
+        }
     }
     #[test]
     fn unicode_insertions_deletions_and_ambiguous_boundaries() {
