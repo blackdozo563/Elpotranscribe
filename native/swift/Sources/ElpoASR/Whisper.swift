@@ -70,17 +70,41 @@ final class WhisperOutput {
     let tokens = WhisperTokens()
     var segments: [Word] = []
     var invalidSegments = false
+    var invalidSegmentBounds: String?
     func appendSegment(_ data: Data, start: Int64, end: Int64) {
         guard let decoded = String(data: data, encoding: .utf8) else { invalidSegments = true; return }
         let text = decoded.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        guard start >= 0, end > start else { invalidSegments = true; return }
+        guard start >= 0, end >= start else {
+            invalidSegments = true
+            invalidSegmentBounds = "début=\(start), fin=\(end)"
+            return
+        }
         segments.append(Word(startMs: UInt64(start), endMs: UInt64(end), text: text))
     }
     func result() throws -> (units: [Word], granularity: String) {
         tokens.flush()
+        // Whisper can emit a text-bearing segment with equal start/end at a
+        // decoding boundary. Keep its text by joining adjacent passages using
+        // only their recognized outer bounds. Never assign word timestamps.
+        var grouped: [Word] = []
+        for segment in segments {
+            if let previous = grouped.last,
+               previous.endMs > segment.startMs || previous.endMs == previous.startMs || segment.endMs == segment.startMs {
+                grouped[grouped.count - 1] = Word(
+                    startMs: min(previous.startMs, segment.startMs),
+                    endMs: max(previous.endMs, segment.endMs),
+                    text: previous.text + " " + segment.text)
+            } else {
+                grouped.append(segment)
+            }
+        }
+        segments = grouped
         if !tokens.invalid, !tokens.words.isEmpty { return (tokens.words, "word") }
-        guard !invalidSegments, !segments.isEmpty else { throw Failure(message: "Whisper n’a fourni ni mots ni passages avec des horodatages valides. Réessayez avec Parakeet ; aucun temps artificiel n’a été créé.") }
+        guard !invalidSegments, !segments.isEmpty, segments.allSatisfy({ $0.endMs > $0.startMs }) else {
+            let detail = invalidSegmentBounds.map { " (\($0))" } ?? ""
+            throw Failure(message: "Whisper n’a fourni ni mots ni passages avec des horodatages valides\(detail). Réessayez avec Parakeet ; aucun temps artificiel n’a été créé.")
+        }
         return (segments, "segment")
     }
 }

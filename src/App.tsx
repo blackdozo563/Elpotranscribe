@@ -259,7 +259,7 @@ export default function App() {
             <AudioLines size={16} />
           </span>
           <div>
-            ELPOTRANSCRIBE<small>Version 1.1.1 · Préversion</small>
+            ELPOTRANSCRIBE<small>Version 1.1.2 · Préversion</small>
           </div>
         </div>
       </aside>
@@ -900,7 +900,7 @@ export default function App() {
                   />
                   <section className="panel info-panel">
                     <h3>Application</h3>
-                    <p>ELPOTRANSCRIBE 1.1.1 · {data.platform}</p>
+                    <p>ELPOTRANSCRIBE 1.1.2 · {data.platform}</p>
                     <p>
                       Aucune télémétrie. Transcription entièrement locale. Aucun
                       audio envoyé à un service cloud.

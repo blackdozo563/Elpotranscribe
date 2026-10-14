@@ -83,6 +83,7 @@ with tempfile.TemporaryDirectory(prefix='elpo-smoke-') as temporary:
     print(verified.stdout)
     print('Real sequential verification passed in both directions; model metadata current',flush=True)
 
+    print('::notice title=Native smoke stage::Short English inference, four queues, integrity and double verification passed; starting French MP3 regression.',flush=True)
     # Synthesized French audio exercises format/duration, not human-speech accuracy.
     voices=subprocess.check_output(['/usr/bin/say','-v','?'],text=True)
     french=[re.match(r'(.+?)\s+fr_FR\s',line) for line in voices.splitlines()]
@@ -109,6 +110,7 @@ with tempfile.TemporaryDirectory(prefix='elpo-smoke-') as temporary:
     passages={**result,'timingGranularity':'segment','words':[]}
     output=root/'target/smoke-whisper-turbo-fr-passages.json';output.write_text(json.dumps(passages,ensure_ascii=False))
     subprocess.run(['cargo','run','--locked','-p','elpo-core','--example','validate_transcript','--',str(output),str(root/'target/smoke-whisper-turbo-fr-passages.srt')],cwd=root,check=True)
+    print('::notice title=Native smoke stage::French MP3 excerpt and real-passage SRT passed; starting complete 20-minute default-engine queue.',flush=True)
     test_env['ELPO_TEST_AUDIO']=str(french_audio)
     checked=subprocess.run(['cargo','test','--locked','--release','-p','elpotranscribe','--target','aarch64-apple-darwin','real_long_french_mp3_default_engine_and_history','--','--ignored','--nocapture'],cwd=root,env=test_env,text=True,capture_output=True)
     if checked.returncode or not re.search(r'test result: ok\. [1-9]\d* passed',checked.stdout):

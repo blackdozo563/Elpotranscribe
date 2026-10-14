@@ -90,6 +90,35 @@ final class WhisperFallbackTests: XCTestCase {
         XCTAssertEqual(result.granularity, "word")
         XCTAssertEqual(result.units.first?.startMs, 120)
     }
+    func testZeroDurationBoundaryKeepsTextAndRecognizedOuterBounds() throws {
+        let output = WhisperOutput()
+        output.appendSegment(Data("Bonjour".utf8), start: 100, end: 900)
+        output.appendSegment(Data("ce soir".utf8), start: 900, end: 900)
+        let result = try output.result()
+        XCTAssertEqual(result.granularity, "segment")
+        XCTAssertEqual(result.units.count, 1)
+        XCTAssertEqual(result.units[0].text, "Bonjour ce soir")
+        XCTAssertEqual(result.units[0].startMs, 100)
+        XCTAssertEqual(result.units[0].endMs, 900)
+    }
+    func testLeadingZeroAndOverlappingPassagesKeepAllText() throws {
+        let output = WhisperOutput()
+        output.appendSegment(Data("Ce".utf8), start: 100, end: 100)
+        output.appendSegment(Data("soir".utf8), start: 100, end: 900)
+        output.appendSegment(Data("à Paris".utf8), start: 800, end: 1500)
+        let result = try output.result()
+        XCTAssertEqual(result.units.count, 1)
+        XCTAssertEqual(result.units[0].text, "Ce soir à Paris")
+        XCTAssertEqual(result.units[0].startMs, 100)
+        XCTAssertEqual(result.units[0].endMs, 1500)
+    }
+    func testReversedSegmentStillFailsWithDiagnosticBounds() {
+        let output = WhisperOutput()
+        output.appendSegment(Data("texte".utf8), start: 900, end: 100)
+        XCTAssertThrowsError(try output.result()) { error in
+            XCTAssertTrue(error.localizedDescription.contains("début=900, fin=100"))
+        }
+    }
     func testNeitherInvalidNorEmptyPassagesAcquireArtificialTimes() {
         let output = WhisperOutput()
         output.tokens.append(Data(" soir".utf8), start: 120, end: 120)

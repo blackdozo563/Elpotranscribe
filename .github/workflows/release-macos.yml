@@ -112,11 +112,11 @@ jobs:
           image="$(find target/aarch64-apple-darwin/release/bundle/dmg -name '*.dmg' -print -quit)"
           test -n "$image"
           bash scripts/validate-dmg.sh "$image"
-          cp "$image" release/ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.1.1.dmg
+          cp "$image" release/ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.1.2.dmg
           shasum -a 256 release/*.dmg > release/SHA256SUMS.txt
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.1.1
+          name: ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.1.2
           path: release/*
           if-no-files-found: error
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -147,11 +147,11 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.1.1
+          name: ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.1.2
           path: release
       - name: Publish validated personal-use build
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          gh release create v1.1.1 release/* --target "$GITHUB_SHA" --title 'ELPOTRANSCRIBE v1.1.1 — validation macOS' --prerelease --notes 'Build Apple Silicon signé ad hoc, non notarié. Correctifs Whisper : repli sur les vrais temps des passages si les mots sont incomplets. Suppression via confirmation native, audio et exports conservés. Éditeur : rechercher, précédent/suivant, remplacer et remplacer tout, casse et mots entiers ; annulation et horodatages conservés. Validation avec MP3 français synthétique de 20 minutes, moteurs locaux et double vérification. Qwen reste expérimental et désactivé. Performances M1/M2 8 Go à mesurer. Voir les limites dans le README.'
+          gh release create v1.1.2 release/* --target "$GITHUB_SHA" --title 'ELPOTRANSCRIBE v1.1.2 — validation macOS' --prerelease --notes 'Build Apple Silicon signé ad hoc, non notarié. Correctifs Whisper : repli sur les vrais temps des passages si les mots sont incomplets. Suppression via confirmation native, audio et exports conservés. Éditeur : rechercher, précédent/suivant, remplacer et remplacer tout, casse et mots entiers ; annulation et horodatages conservés. Validation avec MP3 français synthétique de 20 minutes, moteurs locaux et double vérification. Qwen reste expérimental et désactivé. Performances M1/M2 8 Go à mesurer. Voir les limites dans le README.'
