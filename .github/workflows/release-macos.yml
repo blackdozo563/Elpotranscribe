@@ -65,6 +65,9 @@ jobs:
       - name: Build native engines
         run: |
           mkdir -p target
+          # Release validation starts without cached weights. Experimental Qwen
+          # outputs belong to its separate workflow, not this release cache.
+          rm -rf target/smoke-models target/qwen-packages target/qwen-xcode
           rm -f target/smoke-result.json target/smoke-result.srt target/smoke-whisper-*.json target/smoke-whisper-*.srt target/smoke-qwen-*.json target/smoke-qwen-*.srt
           set +e
           set -o pipefail

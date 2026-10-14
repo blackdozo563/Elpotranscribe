@@ -28,7 +28,7 @@ with tempfile.TemporaryDirectory(prefix='elpo-smoke-') as temporary:
     temp=pathlib.Path(temporary);audio=temp/'jfk.wav'
     with urllib.request.urlopen(manifest['url']) as response: audio.write_bytes(response.read())
     assert hashlib.sha256(audio.read_bytes()).hexdigest()==manifest['sha256'], 'Fixture checksum mismatch'
-    models=pathlib.Path(os.environ.get('ELPO_SMOKE_MODELS',root/'target/smoke-models'))
+    models=pathlib.Path(os.environ.get('ELPO_SMOKE_MODELS',temp/'models'))
     call({'action':'install','models':str(models)})
     result=call({'action':'transcribe','models':str(models),'source':str(audio),'language':'en'})
     assert result['engine']=='Parakeet Ultra'
