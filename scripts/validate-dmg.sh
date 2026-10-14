@@ -8,6 +8,12 @@ hdiutil verify "$image"
 hdiutil attach "$image" -readonly -nobrowse -mountpoint "$mount_dir" -quiet
 app="$mount_dir/ELPOTRANSCRIBE.app"
 test -L "$mount_dir/Applications"
+expected_version="$(python3 -c 'import json; print(json.load(open("src-tauri/tauri.conf.json"))["version"])')"
+actual_version="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Contents/Info.plist")"
+if [[ "$actual_version" != "$expected_version" ]]; then
+  echo "Mauvaise version dans le DMG : $actual_version, attendue : $expected_version" >&2
+  exit 1
+fi
 test -x "$app/Contents/MacOS/elpotranscribe"
 test -x "$app/Contents/MacOS/elpo-asr"
 test -f "$app/Contents/Resources/bench-local.sh"

@@ -68,6 +68,8 @@ jobs:
           mkdir -p target
           # Release validation starts without cached weights.
           rm -rf target/smoke-models
+          # Never relabel a DMG restored from an older cached bundle.
+          rm -rf target/aarch64-apple-darwin/release/bundle
           rm -f target/smoke-result.json target/smoke-result.srt target/smoke-whisper-*.json target/smoke-whisper-*.srt
           set +e
           set -o pipefail
@@ -105,7 +107,7 @@ jobs:
       - name: Validate packaged inference, dependencies and DMG
         run: |
           mkdir -p release
-          image="$(find target/aarch64-apple-darwin/release/bundle/dmg -name '*.dmg' -print -quit)"
+          image="$(find target/aarch64-apple-darwin/release/bundle/dmg -name '*_1.2.0_aarch64.dmg' -print -quit)"
           test -n "$image"
           bash scripts/validate-dmg.sh "$image"
           cp "$image" release/ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.2.0.dmg
