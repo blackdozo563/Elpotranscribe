@@ -172,6 +172,17 @@ export default function App() {
   const run = (command: string, args?: Record<string, unknown>) => {
     void action(command, args).catch(() => {});
   };
+  const confirmAndRun = (
+    message: string,
+    command: string,
+    args?: Record<string, unknown>,
+  ) => {
+    void action("confirm_action", { message })
+      .then((confirmed) => {
+        if (confirmed === true) run(command, args);
+      })
+      .catch(() => {});
+  };
   useEffect(() => {
     if (!desktop) return;
     let dispose: (() => void) | undefined;
@@ -247,7 +258,7 @@ export default function App() {
             <AudioLines size={16} />
           </span>
           <div>
-            ELPOTRANSCRIBE<small>Version 1.1.0 · Préversion</small>
+            ELPOTRANSCRIBE<small>Version 1.1.1 · Préversion</small>
           </div>
         </div>
       </aside>
@@ -538,6 +549,9 @@ export default function App() {
                                         ? " · SRT à enregistrer"
                                         : ""}
                                     </small>
+                                    {j.timingNote && (
+                                      <small>{j.timingNote}</small>
+                                    )}
                                     {j.error && (
                                       <small className="job-error">
                                         {j.error}
@@ -590,15 +604,16 @@ export default function App() {
                                     </button>
                                   ) : (
                                     <button
-                                      title="Retirer de l’historique"
-                                      onClick={() => {
-                                        if (
-                                          window.confirm(
-                                            "Retirer ce résultat de l’historique ? Les exports seront conservés.",
-                                          )
+                                      title="Supprimer la transcription"
+                                      aria-label={`Supprimer ${j.name}`}
+                                      disabled={working}
+                                      onClick={() =>
+                                        confirmAndRun(
+                                          "Supprimer cette transcription du lot et de l’historique ? Votre audio d’origine et les exports seront conservés.",
+                                          "remove_job",
+                                          { id: j.id },
                                         )
-                                          run("remove_job", { id: j.id });
-                                      }}
+                                      }
                                     >
                                       <Trash2 size={14} />
                                     </button>
@@ -633,6 +648,11 @@ export default function App() {
                       >
                         Nouveau lot
                       </button>
+                      <small>
+                        Nouveau lot conserve les résultats dans « Mes
+                        transcriptions ». La corbeille les supprime de
+                        l’historique, sans effacer les audios.
+                      </small>
                       <label className="check-label">
                         <input
                           type="checkbox"
@@ -736,14 +756,12 @@ export default function App() {
                       {data.installedModels?.includes("ultra") && (
                         <button
                           disabled={data.busy || working}
-                          onClick={() => {
-                            if (
-                              window.confirm(
-                                "Supprimer les fichiers du modèle local ?",
-                              )
+                          onClick={() =>
+                            confirmAndRun(
+                              "Supprimer les fichiers du modèle local ?",
+                              "remove_model",
                             )
-                              run("remove_model");
-                          }}
+                          }
                         >
                           <Trash2 size={16} />
                           Supprimer
@@ -782,7 +800,8 @@ export default function App() {
                       id: "whisper-small",
                       name: "Whisper Small",
                       size: "466 Mio",
-                      description: "Alternative multilingue plus volumineuse que Base.",
+                      description:
+                        "Alternative multilingue plus volumineuse que Base.",
                     },
                   ].map((model) => (
                     <section className="panel model-card" key={model.id}>
@@ -814,14 +833,13 @@ export default function App() {
                         {data.installedModels?.includes(model.id) && (
                           <button
                             disabled={data.busy || working}
-                            onClick={() => {
-                              if (
-                                window.confirm(
-                                  `Supprimer ${model.name} du Mac ?`,
-                                )
+                            onClick={() =>
+                              confirmAndRun(
+                                `Supprimer ${model.name} du Mac ?`,
+                                "remove_model",
+                                { engine: model.id },
                               )
-                                run("remove_model", { engine: model.id });
-                            }}
+                            }
                           >
                             <Trash2 size={16} />
                             Supprimer
@@ -881,7 +899,7 @@ export default function App() {
                   />
                   <section className="panel info-panel">
                     <h3>Application</h3>
-                    <p>ELPOTRANSCRIBE 1.1.0 · {data.platform}</p>
+                    <p>ELPOTRANSCRIBE 1.1.1 · {data.platform}</p>
                     <p>
                       Aucune télémétrie. Transcription entièrement locale. Aucun
                       audio envoyé à un service cloud.
@@ -1342,11 +1360,17 @@ function Editor({
     }
   };
   const leave = () => {
-    if (
-      !dirty ||
-      window.confirm("Quitter sans enregistrer vos modifications ?")
-    )
+    if (!dirty) {
       close();
+      return;
+    }
+    void action("confirm_action", {
+      message: "Quitter sans enregistrer vos modifications ?",
+    })
+      .then((confirmed) => {
+        if (confirmed === true) close();
+      })
+      .catch((e) => setError(String(e)));
   };
   useEffect(() => {
     const before = (event: BeforeUnloadEvent) => {
@@ -1418,6 +1442,16 @@ function Editor({
       {error && (
         <div role="alert" className="alert">
           {error}
+        </div>
+      )}
+      {job.timingNote && (
+        <div className="panel info-panel" role="status">
+          {job.timingNote}
+        </div>
+      )}
+      {job.verification?.secondaryTimingNote && (
+        <div className="panel info-panel" role="status">
+          Second avis : {job.verification.secondaryTimingNote}
         </div>
       )}
       {job.verification && (

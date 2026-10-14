@@ -49,7 +49,8 @@ with tempfile.TemporaryDirectory(prefix='elpo-smoke-') as temporary:
         call({'action':'install','models':str(models),'engine':engine})
         result=call({'action':'transcribe','models':str(models),'source':str(audio),'language':'en','engine':engine})
         assert result['engine']==engine
-        assert result['words'] and all(w['endMs']>w['startMs']>=0 for w in result['words'])
+        units=result['segments'] if result.get('timingGranularity')=='segment' else result['words']
+        assert units and all(w['endMs']>w['startMs']>=0 for w in units)
         assert all(word in result['text'].lower() for word in ['country','ask','you']), result['text']
         result['measurement']['realTimeFactor']=result['measurement']['wallSeconds']/(result['durationMs']/1000)
         output=root/f'target/smoke-{engine}.json'; output.write_text(json.dumps(result,ensure_ascii=False))
@@ -81,3 +82,32 @@ with tempfile.TemporaryDirectory(prefix='elpo-smoke-') as temporary:
         raise RuntimeError('Double verification failed: '+(verified.stderr+'\n'+verified.stdout)[-5000:])
     print(verified.stdout)
     print('Real sequential verification passed in both directions; model metadata current',flush=True)
+
+    # Synthesized French audio exercises format/duration, not human-speech accuracy.
+    voices=subprocess.check_output(['/usr/bin/say','-v','?'],text=True)
+    french=[re.match(r'(.+?)\s+fr_FR\s',line) for line in voices.splitlines()]
+    voice=next((match.group(1).strip() for match in french if match),None)
+    assert voice, 'A local French system voice is required for MP3 regression'
+    script=temp/'français.txt'
+    script.write_text("Bonjour. Ce soir, nous allons parler de la transcription en français. Les petits mots doivent rester lisibles et les sous-titres doivent conserver leurs vrais horaires. Voici une interview enregistrée pour vérifier le fonctionnement du logiciel. Nous préparons une formation avec plusieurs exemples, des questions et des réponses. Demain, nous comparerons les résultats. Merci de votre attention.")
+    spoken=temp/'français.aiff'
+    subprocess.run(['/usr/bin/say','-v',voice,'-o',str(spoken),'-f',str(script)],check=True)
+    french_audio=temp/'Français.long.mp3'
+    subprocess.run(['ffmpeg','-hide_banner','-loglevel','error','-nostdin','-y','-stream_loop','-1','-i',str(spoken),'-t','1200','-ar','44100','-ac','2','-c:a','libmp3lame','-b:a','128k',str(french_audio)],check=True)
+    result=call({'action':'transcribe','models':str(models),'source':str(french_audio),'language':'fr','engine':'whisper-turbo'})
+    units=result['segments'] if result.get('timingGranularity')=='segment' else result['words']
+    assert 1199000 <= result['durationMs'] <= 1201000
+    assert units and units[-1]['endMs'] >= 19*60000, 'Long French MP3 truncated'
+    assert all(word in result['text'].lower() for word in ['bonjour','soir']), result['text'][:1500]
+    output=root/'target/smoke-whisper-turbo-fr-long.json';output.write_text(json.dumps(result,ensure_ascii=False))
+    subprocess.run(['cargo','run','--locked','-p','elpo-core','--example','validate_transcript','--',str(output),str(root/'target/smoke-whisper-turbo-fr-long.srt')],cwd=root,check=True)
+    # Export the actual passage boundaries too, independently of token quality.
+    passages={**result,'timingGranularity':'segment','words':[]}
+    output=root/'target/smoke-whisper-turbo-fr-passages.json';output.write_text(json.dumps(passages,ensure_ascii=False))
+    subprocess.run(['cargo','run','--locked','-p','elpo-core','--example','validate_transcript','--',str(output),str(root/'target/smoke-whisper-turbo-fr-passages.srt')],cwd=root,check=True)
+    test_env['ELPO_TEST_AUDIO']=str(french_audio)
+    checked=subprocess.run(['cargo','test','--locked','--release','-p','elpotranscribe','--target','aarch64-apple-darwin','real_long_french_mp3_default_engine_and_history','--','--ignored','--nocapture'],cwd=root,env=test_env,text=True,capture_output=True)
+    if checked.returncode or not re.search(r'test result: ok\. [1-9]\d* passed',checked.stdout):
+        raise RuntimeError('French MP3 queue/removal failed: '+(checked.stderr+'\n'+checked.stdout)[-5000:])
+    print(checked.stdout)
+    print('::notice title=French MP3 regression::20 minutes, stereo 44.1 kHz, Turbo, '+result.get('timingGranularity','word')+' timing, SRT, default-engine queue and persisted removal passed. Synthesized speech, not an accuracy benchmark.',flush=True)

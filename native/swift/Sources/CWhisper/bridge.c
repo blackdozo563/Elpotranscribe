@@ -12,7 +12,7 @@ int elpo_whisper_validate(const char *model) {
 
 // No subprocess: killing the managed helper releases this context and Metal.
 int elpo_whisper(const char *model, const char *language, const float *audio,
-                 int count, int threads, elpo_token_callback callback, void *user) {
+                 int count, int threads, elpo_token_callback callback, elpo_token_callback segment_callback, void *user) {
     struct whisper_context_params cp = whisper_context_default_params();
     cp.use_gpu = true;
     cp.flash_attn = true;
@@ -28,6 +28,8 @@ int elpo_whisper(const char *model, const char *language, const float *audio,
     int status = whisper_full(ctx, p, audio, count);
     if (status == 0) {
         for (int i = 0; i < whisper_full_n_segments(ctx); ++i) {
+            const char *segment = whisper_full_get_segment_text(ctx, i);
+            segment_callback(user, segment, (int)strlen(segment), whisper_full_get_segment_t0(ctx, i) * 10, whisper_full_get_segment_t1(ctx, i) * 10);
             for (int j = 0; j < whisper_full_n_tokens(ctx, i); ++j) {
                 if (whisper_full_get_token_id(ctx, i, j) >= whisper_token_eot(ctx)) continue;
                 struct whisper_token_data t = whisper_full_get_token_data(ctx, i, j);

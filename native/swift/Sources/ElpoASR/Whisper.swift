@@ -64,6 +64,25 @@ final class WhisperTokens {
     }
 }
 
+final class WhisperOutput {
+    let tokens = WhisperTokens()
+    var segments: [Word] = []
+    var invalidSegments = false
+    func appendSegment(_ data: Data, start: Int64, end: Int64) {
+        guard let decoded = String(data: data, encoding: .utf8) else { invalidSegments = true; return }
+        let text = decoded.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        guard start >= 0, end > start else { invalidSegments = true; return }
+        segments.append(Word(startMs: UInt64(start), endMs: UInt64(end), text: text))
+    }
+    func result() throws -> (units: [Word], granularity: String) {
+        tokens.flush()
+        if !tokens.invalid, !tokens.words.isEmpty { return (tokens.words, "word") }
+        guard !invalidSegments, !segments.isEmpty else { throw Failure(message: "Whisper n’a fourni ni mots ni passages avec des horodatages valides. Réessayez avec Parakeet ; aucun temps artificiel n’a été créé.") }
+        return (segments, "segment")
+    }
+}
+
 func transcribeWhisper(root: URL, engine: String, source: String, language: String?) throws {
     _ = try WhisperModel.get(engine)
     let manifest = try JSONDecoder().decode(Manifest.self, from: Data(contentsOf: root.appendingPathComponent(engine + ".json")))
@@ -75,20 +94,22 @@ func transcribeWhisper(root: URL, engine: String, source: String, language: Stri
     let count = try floatAudio(URL(fileURLWithPath: source), destination: temporary)
     guard count <= Int32.max else { throw Failure(message: "Audio trop long pour cette version Whisper ; divisez le fichier.") }
     let audio = try Data(contentsOf: temporary, options: .alwaysMapped)
-    let tokens = WhisperTokens()
+    let output = WhisperOutput()
     let status = audio.withUnsafeBytes { samples in
         directory.appendingPathComponent("model.bin").path.withCString { model in
             (language ?? "auto").withCString { code in
                 elpo_whisper(model, code, samples.bindMemory(to: Float.self).baseAddress, Int32(count), Int32(min(4, ProcessInfo.processInfo.activeProcessorCount)), { user, text, length, start, end in
                     guard let user, let text else { return }
-                    Unmanaged<WhisperTokens>.fromOpaque(user).takeUnretainedValue().append(Data(bytes: text, count: Int(length)), start: start, end: end)
-                }, Unmanaged.passUnretained(tokens).toOpaque())
+                    Unmanaged<WhisperOutput>.fromOpaque(user).takeUnretainedValue().tokens.append(Data(bytes: text, count: Int(length)), start: start, end: end)
+                }, { user, text, length, start, end in
+                    guard let user, let text else { return }
+                    Unmanaged<WhisperOutput>.fromOpaque(user).takeUnretainedValue().appendSegment(Data(bytes: text, count: Int(length)), start: start, end: end)
+                }, Unmanaged.passUnretained(output).toOpaque())
             }
         }
     }
-    tokens.flush()
     guard status == 0 else { throw Failure(message: "Échec whisper.cpp (\(status))") }
-    guard !tokens.invalid, !tokens.words.isEmpty else { throw Failure(message: "Whisper n’a pas fourni de mots horodatés exploitables ; aucun temps inventé") }
-    let words = try JSONSerialization.jsonObject(with: JSONEncoder().encode(tokens.words))
-    emit(["engine": engine, "modelVersion": manifest.sources?.map(\.revision).joined(separator: " / ") ?? whisperRevision, "text": tokens.words.map(\.text).joined(separator: " "), "durationMs": count / 16, "processingTimeMs": try milliseconds(Date().timeIntervalSince(started)), "words": words])
+    let result = try output.result()
+    let units = try JSONSerialization.jsonObject(with: JSONEncoder().encode(result.units))
+    emit(["engine": engine, "modelVersion": manifest.sources?.map(\.revision).joined(separator: " / ") ?? whisperRevision, "text": result.units.map(\.text).joined(separator: " "), "durationMs": count / 16, "processingTimeMs": try milliseconds(Date().timeIntervalSince(started)), "timingGranularity": result.granularity, "words": result.granularity == "word" ? units : ([[String: Any]]()), "segments": try JSONSerialization.jsonObject(with: JSONEncoder().encode(output.segments))])
 }

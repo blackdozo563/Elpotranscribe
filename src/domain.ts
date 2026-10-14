@@ -27,11 +27,13 @@ export interface Job {
   engine: string;
   language: string;
   modelVersion?: string | null;
+  timingNote?: string | null;
   verificationStatus?: string | null;
   verificationError?: string | null;
   verification?: {
     secondaryEngine: string;
     secondaryVersion: string;
+    secondaryTimingNote?: string | null;
     referenceCues: Cue[];
     review: {
       approximate: boolean;

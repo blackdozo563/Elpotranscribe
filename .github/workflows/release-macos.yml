@@ -102,17 +102,21 @@ jobs:
         with:
           tauriScript: bash scripts/tauri-cli.sh
           args: --target aarch64-apple-darwin --config target/signing.json -- --locked
+      - name: Prepare MP3 regression tools
+        run: |
+          if ! command -v ffmpeg >/dev/null; then brew install ffmpeg; fi
+          ffmpeg -version
       - name: Validate packaged inference, dependencies and DMG
         run: |
           mkdir -p release
           image="$(find target/aarch64-apple-darwin/release/bundle/dmg -name '*.dmg' -print -quit)"
           test -n "$image"
           bash scripts/validate-dmg.sh "$image"
-          cp "$image" release/ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.1.0.dmg
+          cp "$image" release/ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.1.1.dmg
           shasum -a 256 release/*.dmg > release/SHA256SUMS.txt
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.1.0
+          name: ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.1.1
           path: release/*
           if-no-files-found: error
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -143,11 +147,11 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.1.0
+          name: ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.1.1
           path: release
       - name: Publish validated personal-use build
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          gh release create v1.1.0 release/* --target "$GITHUB_SHA" --title 'ELPOTRANSCRIBE v1.1.0 — validation macOS' --prerelease --notes 'Build Apple Silicon signé ad hoc, non notarié. Parakeet Ultra, Whisper Base/Small/large-v3-turbo Q5_0, double vérification et export SRT vérifiés par la CI. Qwen reste expérimental et désactivé. Performances M1/M2 8 Go à mesurer. Voir les limites dans le README.'
+          gh release create v1.1.1 release/* --target "$GITHUB_SHA" --title 'ELPOTRANSCRIBE v1.1.1 — validation macOS' --prerelease --notes 'Build Apple Silicon signé ad hoc, non notarié. Correctifs Whisper : repli sur les vrais temps des passages si les mots sont incomplets. Suppression via confirmation native, audio et exports conservés. Validation avec MP3 français synthétique de 20 minutes, moteurs locaux et double vérification. Qwen reste expérimental et désactivé. Performances M1/M2 8 Go à mesurer. Voir les limites dans le README.'

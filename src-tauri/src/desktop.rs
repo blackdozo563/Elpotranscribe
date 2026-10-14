@@ -1,4 +1,4 @@
-use elpo_core::{self as core, Cue, SubtitleSettings, Word};
+use elpo_core::{self as core, Cue, SubtitleSettings};
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
@@ -29,6 +29,8 @@ struct Job {
     #[serde(default)]
     model_version: Option<String>,
     #[serde(default)]
+    timing_note: Option<String>,
+    #[serde(default)]
     verification: Option<Verification>,
     #[serde(default)]
     verification_status: Option<String>,
@@ -42,6 +44,8 @@ struct Job {
 struct Verification {
     secondary_engine: String,
     secondary_version: String,
+    #[serde(default)]
+    secondary_timing_note: Option<String>,
     reference_cues: Vec<Cue>,
     review: core::review::Review,
 }
@@ -121,6 +125,18 @@ impl AppState {
             .find(|j| j.id == id)
             .ok_or("Transcription inconnue")?;
         f(j);
+        self.persist(&s)
+    }
+    fn remove_record(&self, id: &str) -> Result<(), String> {
+        let mut s = self.data.store.lock().map_err(err)?;
+        if s.jobs.iter().any(|j| {
+            j.id == id
+                && (j.status == "transcribing"
+                    || j.verification_status.as_deref() == Some("processing"))
+        }) {
+            return Err("Annulez d’abord ce fichier".into());
+        }
+        s.jobs.retain(|j| j.id != id);
         self.persist(&s)
     }
     fn models(&self) -> PathBuf {
@@ -358,12 +374,13 @@ fn default_engine() -> String {
 fn default_update_checks() -> bool {
     true
 }
-fn infer_words(
+fn infer_transcript(
     state: &AppState,
     engine: &str,
     job: &Job,
     language: &str,
-) -> Result<(Vec<Word>, String), String> {
+    settings: &SubtitleSettings,
+) -> Result<core::native::Transcript, String> {
     let result = state.helper(serde_json::json!({"action":"transcribe", "models":state.models(), "source":job.source, "language":language, "engine":engine}), Some(&job.id))?;
     let expected = if engine == "ultra" {
         "Parakeet Ultra"
@@ -373,32 +390,33 @@ fn infer_words(
     if result["engine"].as_str() != Some(expected) {
         return Err("Le moteur exécuté ne correspond pas au moteur choisi".into());
     }
-    Ok((
-        serde_json::from_value(result["words"].clone()).map_err(err)?,
-        result["modelVersion"]
-            .as_str()
-            .ok_or("Version du moteur absente")?
-            .to_owned(),
-    ))
+    core::native::transcript(&result, settings).map_err(err)
 }
 fn process_verification(state: AppState, job: Job, settings: Settings, secondary: String) {
     let result = (|| {
-        let (primary_words, version) = infer_words(&state, &job.engine, &job, &job.language)?;
-        let cues = core::segment(&primary_words, &settings.subtitles).map_err(err)?;
+        let primary = infer_transcript(
+            &state,
+            &job.engine,
+            &job,
+            &job.language,
+            &settings.subtitles,
+        )?;
+        let cues = primary.cues;
         // Persist the primary result before loading the independent second model.
         state.modify(&job.id, |current| {
             current.cues = cues.clone();
-            current.model_version = Some(version);
+            current.model_version = Some(primary.model_version);
+            current.timing_note = primary.timing_note;
             current.dirty = true;
         })?;
         let comparison = (|| {
-            let (secondary_words, secondary_version) =
-                infer_words(&state, &secondary, &job, &job.language)?;
-            core::segment(&secondary_words, &settings.subtitles).map_err(err)?;
-            let review = core::review::compare(&cues, &secondary_words).map_err(err)?;
+            let result =
+                infer_transcript(&state, &secondary, &job, &job.language, &settings.subtitles)?;
+            let review = core::review::compare(&cues, &result.comparison_units).map_err(err)?;
             Ok::<_, String>(Verification {
                 secondary_engine: secondary,
-                secondary_version,
+                secondary_version: result.model_version,
+                secondary_timing_note: result.timing_note,
                 reference_cues: cues,
                 review,
             })
@@ -476,6 +494,7 @@ fn start_verification(
         job.archived = true;
         job.engine = primary;
         job.model_version = None;
+        job.timing_note = None;
         job.status = "transcribing".into();
         job.cues.clear();
         job.dirty = false;
@@ -522,6 +541,19 @@ fn now() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
+}
+#[tauri::command]
+async fn confirm_action(message: String) -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        rfd::MessageDialog::new()
+            .set_title("ELPOTRANSCRIBE")
+            .set_description(&message)
+            .set_buttons(rfd::MessageButtons::YesNo)
+            .show()
+            == rfd::MessageDialogResult::Yes
+    })
+    .await
+    .map_err(err)
 }
 #[tauri::command]
 async fn confirm_discard() -> Result<bool, String> {
@@ -657,6 +689,7 @@ async fn import_files(
                         .engine
                         .clone(),
                     model_version: None,
+                    timing_note: None,
                     verification: None,
                     verification_status: None,
                     verification_error: None,
@@ -780,34 +813,22 @@ fn process_queue(state: AppState) {
             Ok(Some(j)) => j,
             _ => break,
         };
-        let result = (|| -> Result<(Vec<Cue>, String), String> {
-            let result=state.helper(serde_json::json!({"action":"transcribe","models":state.models(),"source":job.source,"language":settings.language,"engine":settings.engine}),Some(&job.id))?;
-            let expected = if settings.engine == "ultra" {
-                "Parakeet Ultra"
-            } else {
-                &settings.engine
-            };
-            if result["engine"].as_str() != Some(expected) {
-                return Err("Le moteur exécuté ne correspond pas au moteur choisi".into());
-            }
-            let version = result["modelVersion"]
-                .as_str()
-                .ok_or("Version du moteur absente")?
-                .to_owned();
-            let words: Vec<Word> = serde_json::from_value(result["words"].clone()).map_err(err)?;
-            Ok((
-                core::segment(&words, &settings.subtitles).map_err(err)?,
-                version,
-            ))
-        })();
+        let result = infer_transcript(
+            &state,
+            &settings.engine,
+            &job,
+            &settings.language,
+            &settings.subtitles,
+        );
         let saved = state.modify(&job.id, |j| {
             if j.status == "cancelled" {
                 return;
             }
             match result {
-                Ok((cues, version)) => {
-                    j.cues = cues;
-                    j.model_version = Some(version);
+                Ok(transcript) => {
+                    j.cues = transcript.cues;
+                    j.model_version = Some(transcript.model_version);
+                    j.timing_note = transcript.timing_note;
                     j.status = "completed".into();
                     j.dirty = true;
                     if settings.auto_save {
@@ -883,15 +904,7 @@ fn retry_job(state: State<'_, AppState>, id: String) -> Result<(), String> {
 }
 #[tauri::command]
 fn remove_job(state: State<'_, AppState>, id: String) -> Result<(), String> {
-    let mut s = state.data.store.lock().map_err(err)?;
-    if s.jobs
-        .iter()
-        .any(|j| j.id == id && j.status == "transcribing")
-    {
-        return Err("Annulez d’abord ce fichier".into());
-    }
-    s.jobs.retain(|j| j.id != id);
-    state.persist(&s)
+    state.remove_record(&id)
 }
 #[tauri::command]
 fn archive_completed(state: State<'_, AppState>) -> Result<(), String> {
@@ -1108,6 +1121,7 @@ pub fn run() {
             snapshot,
             check_model_updates,
             confirm_discard,
+            confirm_action,
             import_files,
             install_model,
             remove_model,
@@ -1220,6 +1234,55 @@ mod integration_tests {
             );
         }
     }
+    #[test]
+    #[ignore = "Requires packaged Turbo and real French MP3; run from smoke-native.py"]
+    fn real_long_french_mp3_default_engine_and_history() {
+        let root = tempfile::tempdir().unwrap();
+        let models = PathBuf::from(std::env::var("ELPO_TEST_MODELS").unwrap());
+        let audio = PathBuf::from(std::env::var("ELPO_TEST_AUDIO").unwrap());
+        std::os::unix::fs::symlink(models, root.path().join("models")).unwrap();
+        let before = fs::read(&audio).unwrap();
+        let job: Job = serde_json::from_value(serde_json::json!({
+            "id":"french-long","source":audio,"name":"Français.long.mp3","size":before.len(),
+            "durationMs":1200000,"status":"pending","cues":[],"error":null,"exportPath":null,
+            "dirty":false,"createdAt":0,"language":"fr","engine":"whisper-turbo"
+        }))
+        .unwrap();
+        let state = AppState {
+            data: Arc::new(Inner {
+                store: Mutex::new(Store {
+                    jobs: vec![job],
+                    settings: Settings {
+                        engine: "whisper-turbo".into(),
+                        language: "fr".into(),
+                        auto_save: true,
+                        ..Settings::default()
+                    },
+                }),
+                runtime: Mutex::new(Runtime::default()),
+                root: root.path().into(),
+                helper: PathBuf::from(std::env::var("ELPO_TEST_HELPER").unwrap()),
+                platform: "French MP3 regression".into(),
+            }),
+        };
+        state.reserve().unwrap();
+        process_queue(state.clone());
+        let snapshot = state.snapshot().unwrap();
+        let result = &snapshot.jobs[0];
+        assert_eq!(result.status, "completed", "{:?}", result.error);
+        assert_eq!(result.engine, "whisper-turbo");
+        assert!(result.cues.last().unwrap().end_ms >= 19 * 60000);
+        let text = core::txt(&result.cues).unwrap().to_lowercase();
+        assert!(text.contains("bonjour"));
+        assert!(audio.with_extension("srt").exists());
+        state.remove_record("french-long").unwrap();
+        let saved: Store =
+            serde_json::from_slice(&fs::read(root.path().join("history.json")).unwrap()).unwrap();
+        assert!(saved.jobs.is_empty());
+        assert!(state.snapshot().unwrap().jobs.is_empty());
+        assert_eq!(fs::read(&audio).unwrap(), before);
+        assert!(audio.with_extension("srt").exists());
+    }
     // This opt-in test uses actual Core ML inference. It is never counted as a
     // passing unit test when models or the ARM64 macOS runtime are unavailable.
     #[test]
@@ -1258,6 +1321,7 @@ mod integration_tests {
             language: "en".into(),
             engine: "Parakeet Ultra · Core ML".into(),
             model_version: None,
+            timing_note: None,
             verification: None,
             verification_status: None,
             verification_error: None,
@@ -1311,6 +1375,20 @@ mod integration_tests {
         .unwrap();
         assert!(!zip.is_empty());
         assert!(state.data.runtime.lock().unwrap().child.is_none());
+        // Removing a completed record must persist, without deleting source/export.
+        let removed_id = snapshot.jobs[1].id.clone();
+        state.remove_record(&removed_id).unwrap();
+        assert!(!state
+            .snapshot()
+            .unwrap()
+            .jobs
+            .iter()
+            .any(|j| j.id == removed_id));
+        let persisted: Store =
+            serde_json::from_slice(&fs::read(root.path().join("history.json")).unwrap()).unwrap();
+        assert!(!persisted.jobs.iter().any(|j| j.id == removed_id));
+        assert_eq!(fs::read(&a).unwrap(), fs::read(&fixture).unwrap());
+        assert!(a.with_extension("srt").exists());
         // Exercise the same cancellation path as the UI against a real helper.
         let cancelled = make(a.clone());
         let id = cancelled.id.clone();

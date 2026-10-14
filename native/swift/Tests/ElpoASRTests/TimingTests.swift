@@ -62,3 +62,32 @@ final class TimingTests: XCTestCase {
     }
 
 }
+
+final class WhisperFallbackTests: XCTestCase {
+    func testZeroDurationFrenchWordKeepsEntireRealPassage() throws {
+        let output = WhisperOutput()
+        output.tokens.append(Data(" ce".utf8), start: 120, end: 120)
+        output.tokens.append(Data(" soir".utf8), start: 120, end: 800)
+        output.appendSegment(Data(" ce soir".utf8), start: 100, end: 900)
+        let result = try output.result()
+        XCTAssertEqual(result.granularity, "segment")
+        XCTAssertEqual(result.units.map(\.text), ["ce soir"])
+        XCTAssertEqual(result.units.first?.startMs, 100)
+        XCTAssertEqual(result.units.first?.endMs, 900)
+    }
+    func testCompleteWordsStillUseWordTimes() throws {
+        let output = WhisperOutput()
+        output.tokens.append(Data(" Bonjour".utf8), start: 120, end: 800)
+        output.appendSegment(Data(" Bonjour".utf8), start: 100, end: 900)
+        let result = try output.result()
+        XCTAssertEqual(result.granularity, "word")
+        XCTAssertEqual(result.units.first?.startMs, 120)
+    }
+    func testNeitherInvalidNorEmptyPassagesAcquireArtificialTimes() {
+        let output = WhisperOutput()
+        output.tokens.append(Data(" soir".utf8), start: 120, end: 120)
+        output.appendSegment(Data(" soir".utf8), start: 0, end: 0)
+        XCTAssertThrowsError(try output.result())
+        XCTAssertThrowsError(try WhisperOutput().result())
+    }
+}

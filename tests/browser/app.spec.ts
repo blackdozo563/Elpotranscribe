@@ -146,8 +146,11 @@ async function localReviewFixture(page: import("@playwright/test").Page) {
       exportPath: null,
       dirty: false,
       createdAt: 0,
-      engine: "ultra",
+      engine: "whisper-turbo",
       language: "fr",
+      archived: false,
+      timingNote:
+        "Horodatages par passages Whisper : les temps mot à mot sont incomplets.",
       verificationStatus: "completed",
       verification: {
         secondaryEngine: "whisper-turbo",
@@ -203,9 +206,20 @@ async function localReviewFixture(page: import("@playwright/test").Page) {
         transformCallback: () => 1,
         unregisterCallback: () => {},
         convertFileSrc: () => "",
-        invoke: async (command: string, args: { cues?: typeof cues }) => {
+        invoke: async (
+          command: string,
+          args: { cues?: typeof cues; id?: string },
+        ) => {
           calls.push({ command, args });
           if (command === "snapshot") return state;
+          if (command === "confirm_action")
+            return (
+              (window as unknown as { __TEST_CONFIRM__?: boolean })
+                .__TEST_CONFIRM__ !== false
+            );
+          if (command === "remove_job")
+            state.jobs = state.jobs.filter((j) => j.id !== args.id);
+          if (command === "archive_completed") job.archived = true;
           if (command === "save_edit" && args.cues) job.cues = args.cues;
           return 1;
         },
@@ -303,4 +317,80 @@ test("mise à jour : notification et téléchargement explicite du bon modèle",
       ),
     )
     .toEqual({ engine: "whisper-turbo" });
+});
+
+test("suppression native : retire du lot et de l’historique sans window.confirm", async ({
+  page,
+}) => {
+  await localReviewFixture(page);
+  await page.evaluate(() => {
+    window.confirm = () => {
+      throw new Error("Unsupported WebKit confirm");
+    };
+  });
+  await page
+    .getByRole("button", { name: "Supprimer Voix.wav", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Supprimer Voix.wav", exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Mes transcriptions", exact: false })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Supprimer Voix.wav", exact: true }),
+  ).toHaveCount(0);
+  const commands = await page.evaluate(() =>
+    (
+      window as unknown as { __TEST_CALLS__: Array<{ command: string }> }
+    ).__TEST_CALLS__.map((c) => c.command),
+  );
+  expect(commands.indexOf("confirm_action")).toBeLessThan(
+    commands.indexOf("remove_job"),
+  );
+});
+
+test("annuler la confirmation conserve la transcription ; Nouveau lot archive seulement", async ({
+  page,
+}) => {
+  await localReviewFixture(page);
+  await page.evaluate(() => Object.assign(window, { __TEST_CONFIRM__: false }));
+  await page
+    .getByRole("button", { name: "Supprimer Voix.wav", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Supprimer Voix.wav", exact: true }),
+  ).toBeEnabled();
+  expect(
+    await page.evaluate(() =>
+      (
+        window as unknown as { __TEST_CALLS__: Array<{ command: string }> }
+      ).__TEST_CALLS__.some((c) => c.command === "remove_job"),
+    ),
+  ).toBe(false);
+  await page.getByRole("button", { name: "Nouveau lot", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Supprimer Voix.wav", exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Mes transcriptions", exact: false })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Supprimer Voix.wav", exact: true }),
+  ).toBeVisible();
+});
+
+test("l’éditeur signale les temps par passages et conserve l’export", async ({
+  page,
+}) => {
+  await localReviewFixture(page);
+  await page.getByRole("button", { name: "Ouvrir", exact: true }).click();
+  await expect(
+    page
+      .getByRole("status")
+      .filter({ hasText: "Horodatages par passages Whisper" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "SRT à côté de l’audio", exact: true }),
+  ).toBeEnabled();
 });
