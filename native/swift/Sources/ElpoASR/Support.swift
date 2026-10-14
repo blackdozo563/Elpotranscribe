@@ -1,4 +1,4 @@
-import Darwin
+import CWhisper
 import Foundation
 import AVFoundation
 import CryptoKit
@@ -64,15 +64,14 @@ final class ModelLease {
     private var descriptor: Int32 = -1
     init(root: URL) throws {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        descriptor = Darwin.open(root.appendingPathComponent(".inference.lock").path, O_CREAT | O_RDWR, mode_t(0o600))
-        guard descriptor >= 0 else { throw Failure(message: "Impossible de verrouiller le dossier des modèles.") }
-        guard Darwin.flock(descriptor, LOCK_EX | LOCK_NB) == 0 else {
-            Darwin.close(descriptor); descriptor = -1
-            throw Failure(message: "Un autre traitement local utilise déjà les modèles. Attendez sa fin avant de continuer.")
+        descriptor = root.appendingPathComponent(".inference.lock").path.withCString { elpo_model_lock($0) }
+        guard descriptor >= 0 else {
+            if descriptor == -2 { throw Failure(message: "Un autre traitement local utilise déjà les modèles. Attendez sa fin avant de continuer.") }
+            throw Failure(message: "Impossible de verrouiller le dossier des modèles.")
         }
     }
     func release() {
-        if descriptor >= 0 { _ = Darwin.flock(descriptor, LOCK_UN); Darwin.close(descriptor); descriptor = -1 }
+        if descriptor >= 0 { elpo_model_unlock(descriptor); descriptor = -1 }
     }
     deinit { release() }
 }

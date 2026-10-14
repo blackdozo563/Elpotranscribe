@@ -2,6 +2,9 @@
 #include "whisper.h"
 #include <string.h>
 #include <stdlib.h>
+#include <sys/file.h>
+#include <fcntl.h>
+#include <unistd.h>
 int elpo_whisper_validate(const char *model) {
     struct whisper_context_params params = whisper_context_default_params();
     params.use_gpu = true;
@@ -71,4 +74,14 @@ int elpo_whisper(const char *model, const char *language, const float *audio,
     }
     whisper_free(ctx);
     return status;
+}
+
+int elpo_model_lock(const char *path) {
+    int descriptor=open(path,O_CREAT|O_RDWR,0600);
+    if (descriptor<0) return -1;
+    if (flock(descriptor,LOCK_EX|LOCK_NB)!=0) { close(descriptor); return -2; }
+    return descriptor;
+}
+void elpo_model_unlock(int descriptor) {
+    if (descriptor>=0) { flock(descriptor,LOCK_UN); close(descriptor); }
 }
