@@ -1,0 +1,115 @@
+name: ELPOTRANSCRIBE — macOS ARM64
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publier le DMG validé dans une GitHub Release'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: macos-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  portable:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run build && npm test
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser
+      - run: rustup toolchain install 1.93.0 --profile minimal --component rustfmt,clippy
+      - run: cargo fmt --all --check && cargo clippy -p elpo-core --locked -- -D warnings && cargo test -p elpo-core --locked
+  build:
+    needs: portable
+    # Official ARM64 label, checked in actions/runner-images. Plan/credits must allow it.
+    runs-on: macos-26
+    timeout-minutes: 90
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '14.0'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Check native tools
+        run: |
+          test "$(uname -m)" = arm64
+          xcodebuild -version
+          swift --version
+          rustup toolchain install 1.93.0 --profile minimal --target aarch64-apple-darwin
+      - uses: actions/cache@v4
+        with:
+          path: |
+            target
+            native/swift/.build
+          key: macos-arm64-${{ hashFiles('Cargo.lock', 'native/swift/Package.swift') }}
+      - run: npm ci
+      - run: npm run native:build
+      - run: swift test --package-path native/swift
+      - run: cargo test -p elpo-core --locked
+      - run: npm run check && npm test
+      - name: Prepare optional Developer ID signing
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: python3 scripts/prepare-signing.py target/signing.json
+      - name: Build app and DMG
+        uses: tauri-apps/tauri-action@944946e3e4cac6603d1fe8f514171e9ecd3c78aa # v1
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          args: --target aarch64-apple-darwin --config target/signing.json -- --locked
+      - name: Validate packaged inference, dependencies and DMG
+        run: |
+          mkdir -p release
+          image="$(find target/aarch64-apple-darwin/release/bundle/dmg -name '*.dmg' -print -quit)"
+          test -n "$image"
+          bash scripts/validate-dmg.sh "$image"
+          cp "$image" release/ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.0.0.dmg
+          shasum -a 256 release/*.dmg > release/SHA256SUMS.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.0.0
+          path: release/*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: native-validation
+          path: |
+            target/smoke-result.json
+            target/smoke-result.srt
+          if-no-files-found: ignore
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.0.0
+          path: release
+      - name: Publish validated personal-use build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create v1.0.0 release/* --target "$GITHUB_SHA" --title 'ELPOTRANSCRIBE v1.0.0 — validation macOS' --prerelease --notes 'Build Apple Silicon signé ad hoc, non notarié. Parakeet Ultra et export SRT vérifiés par la CI ; performances M1/M2 8 Go à mesurer. Voir les limites dans le README.'
