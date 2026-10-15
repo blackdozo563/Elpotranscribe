@@ -1,5 +1,5 @@
 use elpo_core::{self as core, Cue, SubtitleSettings};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::{
     fs,
     io::{Read, Write},
@@ -10,79 +10,7 @@ use std::{
 };
 use tauri::{Manager, State};
 
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Job {
-    id: String,
-    source: PathBuf,
-    name: String,
-    size: u64,
-    duration_ms: u64,
-    status: String,
-    cues: Vec<Cue>,
-    error: Option<String>,
-    export_path: Option<PathBuf>,
-    dirty: bool,
-    created_at: u64,
-    language: String,
-    engine: String,
-    #[serde(default)]
-    model_version: Option<String>,
-    #[serde(default)]
-    timing_note: Option<String>,
-    #[serde(default)]
-    profile_snapshot: Option<core::vocabulary::Profile>,
-    #[serde(default)]
-    verification: Option<Verification>,
-    #[serde(default)]
-    verification_status: Option<String>,
-    #[serde(default)]
-    verification_error: Option<String>,
-    #[serde(default)]
-    archived: bool,
-}
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Verification {
-    secondary_engine: String,
-    secondary_version: String,
-    #[serde(default)]
-    secondary_timing_note: Option<String>,
-    reference_cues: Vec<Cue>,
-    review: core::review::Review,
-}
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Settings {
-    #[serde(default = "default_engine")]
-    engine: String,
-    #[serde(default = "default_update_checks")]
-    auto_model_updates: bool,
-    language: String,
-    auto_save: bool,
-    subtitles: SubtitleSettings,
-    vocabulary: Vec<String>,
-    #[serde(default)]
-    selected_profile_id: Option<String>,
-}
-impl Default for Settings {
-    fn default() -> Self {
-        Self {
-            engine: default_engine(),
-            auto_model_updates: true,
-            language: "fr".into(),
-            auto_save: false,
-            subtitles: SubtitleSettings::default(),
-            vocabulary: vec![],
-            selected_profile_id: None,
-        }
-    }
-}
-#[derive(Clone, Default, Serialize, Deserialize)]
-struct Store {
-    jobs: Vec<Job>,
-    settings: Settings,
-}
+use crate::history::{self, default_engine, Job, ReviewDocument, Settings, Store, Verification};
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Snapshot {
@@ -94,6 +22,7 @@ struct Snapshot {
     model_updates: Vec<serde_json::Value>,
     platform: String,
     profiles: Vec<core::vocabulary::Profile>,
+    review_pending_total: usize,
 }
 #[derive(Default)]
 struct Runtime {
@@ -288,6 +217,7 @@ impl AppState {
         let s = self.data.store.lock().map_err(err)?;
         Ok(Snapshot {
             jobs: s.jobs.clone(),
+            review_pending_total: s.pending_total(),
             profiles: self.data.profiles.lock().map_err(err)?.profiles.clone(),
             settings: s.settings.clone(),
             busy,
@@ -371,12 +301,6 @@ impl AppState {
 fn err(e: impl std::fmt::Display) -> String {
     e.to_string()
 }
-fn default_engine() -> String {
-    "ultra".into()
-}
-fn default_update_checks() -> bool {
-    true
-}
 fn infer_transcript(
     state: &AppState,
     engine: &str,
@@ -419,13 +343,24 @@ fn process_verification(state: AppState, job: Job, settings: Settings, secondary
             if let Some(profile) = &job.profile_snapshot {
                 core::vocabulary::rank_review(&mut review, profile);
             }
-            Ok::<_, String>(Verification {
-                secondary_engine: secondary,
-                secondary_version: result.model_version,
-                secondary_timing_note: result.timing_note,
-                reference_cues: cues,
-                review,
-            })
+            let session = core::review_session::Session::from_review(
+                &job.id,
+                &job.engine,
+                &secondary,
+                &cues,
+                &review,
+            )
+            .map_err(err)?;
+            Ok::<_, String>((
+                Verification {
+                    secondary_engine: secondary,
+                    secondary_version: result.model_version,
+                    secondary_timing_note: result.timing_note,
+                    reference_cues: cues,
+                    review,
+                },
+                session,
+            ))
         })();
         state.modify(&job.id, |current| {
             if current.status == "cancelled"
@@ -435,7 +370,8 @@ fn process_verification(state: AppState, job: Job, settings: Settings, secondary
             }
             current.status = "completed".into();
             match comparison {
-                Ok(verification) => {
+                Ok((verification, session)) => {
+                    current.review_state = Some(session);
                     current.verification = Some(verification);
                     current.verification_status = Some("completed".into());
                 }
@@ -516,6 +452,8 @@ fn start_verification(
         job.export_path = None;
         job.error = None;
         job.verification = None;
+        job.review_state = None;
+        job.edit_revision = 0;
         job.verification_error = None;
         job.verification_status = Some("processing".into());
         store.jobs.push(job.clone());
@@ -701,6 +639,8 @@ async fn import_files(
                     verification_status: None,
                     verification_error: None,
                     archived: false,
+                    review_state: None,
+                    edit_revision: 0,
                 });
             }
             let mut s = state.data.store.lock().map_err(err)?;
@@ -1140,15 +1080,61 @@ fn save_settings(state: State<'_, AppState>, mut settings: Settings) -> Result<(
     s.settings = settings;
     state.persist(&s)
 }
+// Persist the complete candidate before exposing it to any snapshot or caller.
+fn edit_transaction(
+    state: &AppState,
+    id: &str,
+    edit: impl FnOnce(&mut Job) -> Result<ReviewDocument, String>,
+) -> Result<ReviewDocument, String> {
+    let mut guard = state.data.store.lock().map_err(err)?;
+    guard.edit(id, edit, |candidate| state.persist(candidate))
+}
 #[tauri::command]
-fn save_edit(state: State<'_, AppState>, id: String, cues: Vec<Cue>) -> Result<(), String> {
-    core::validate(&cues).map_err(err)?;
-    state.modify(&id, |j| {
-        if j.status == "completed" && j.cues != cues {
-            j.cues = cues;
-            j.dirty = true;
-        }
+fn save_edit(
+    state: State<'_, AppState>,
+    id: String,
+    cues: Vec<Cue>,
+    expected_revision: Option<u64>,
+) -> Result<ReviewDocument, String> {
+    edit_transaction(&state, &id, |job| job.save(cues, expected_revision))
+}
+#[tauri::command]
+fn list_review(state: State<'_, AppState>, id: String) -> Result<ReviewDocument, String> {
+    let store = state.data.store.lock().map_err(err)?;
+    Ok(store
+        .jobs
+        .iter()
+        .find(|job| job.id == id)
+        .ok_or("Transcription inconnue")?
+        .document())
+}
+#[tauri::command]
+fn resolve_review(
+    state: State<'_, AppState>,
+    id: String,
+    difference_id: String,
+    decision: core::review_session::Decision,
+    expected_revision: u64,
+) -> Result<ReviewDocument, String> {
+    edit_transaction(&state, &id, |job| {
+        job.resolve(&difference_id, decision, expected_revision)
     })
+}
+#[tauri::command]
+fn restore_review(
+    state: State<'_, AppState>,
+    id: String,
+    cues: Vec<Cue>,
+    review_state: Option<core::review_session::Session>,
+    expected_revision: u64,
+) -> Result<ReviewDocument, String> {
+    edit_transaction(&state, &id, |job| {
+        job.restore(cues, review_state, expected_revision)
+    })
+}
+#[tauri::command]
+fn review_pending_total(state: State<'_, AppState>) -> Result<usize, String> {
+    Ok(state.data.store.lock().map_err(err)?.pending_total())
 }
 #[tauri::command]
 async fn export_job(
@@ -1256,11 +1242,7 @@ pub fn run() {
             let root = app.path().app_data_dir()?;
             fs::create_dir_all(&root)?;
             let history = root.join("history.json");
-            let mut store: Store = if history.exists() {
-                serde_json::from_slice(&fs::read(&history)?)?
-            } else {
-                Store::default()
-            };
+            let mut store = history::load(&history).map_err(std::io::Error::other)?;
             if check_engine(&store.settings.engine).is_err() {
                 store.settings.engine = default_engine();
                 if store.settings.language == "ar" {
@@ -1366,6 +1348,10 @@ pub fn run() {
             export_profile,
             archive_completed,
             save_edit,
+            list_review,
+            resolve_review,
+            restore_review,
+            review_pending_total,
             export_job,
             export_zip,
             reveal,
@@ -1602,6 +1588,8 @@ mod integration_tests {
             verification_status: None,
             verification_error: None,
             archived: false,
+            review_state: None,
+            edit_revision: 0,
         };
         let mut settings = Settings::default();
         settings.language = std::env::var("ELPO_TEST_LANGUAGE").unwrap_or_else(|_| "en".into());

@@ -1,5 +1,28 @@
 # Validation réellement effectuée
 
+## Refonte de l’interface — Phase 6 (15 octobre 2026)
+
+Données de relecture ajoutées, sans changement visuel, moteur, horodatage ou format d’export. Aucune dépendance ajoutée.
+
+- `crates/core/src/review_session.rs` : identifiants persistants, lectures et moteurs d’origine, plages UTF-16, états `pending`, `accepted`, `kept`, `modified`, `needsReview`. Les propositions applicables sont décomposées en plages de mots ; les autres segments et les limites audio ne changent pas. Une comparaison à cheval sur plusieurs segments reste manuelle. Toute modification externe du segment invalide ses plages ; un changement de structure ou de temps invalide prudemment toutes les plages. Une nouvelle sélection explicitement fournie permet une correction manuelle. Les autres divergences du même segment sont décalées après une résolution, ou invalidées si la nouvelle plage les recouvre.
+- `src-tauri/src/history.rs` : les types de stockage utilisés par l’application sont désormais testables sur Linux. Migration du schéma précédent, copie initiale intacte `history.pre-review-v1.json`, absence de réécriture au chargement suivant, décisions et révisions enregistrées. Une erreur de décision, une révision périmée ou un échec de persistance n’exposent pas de mutation partielle. Les sauvegardes classiques restent compatibles et invalident les anciennes plages après une édition manuelle.
+- `src-tauri/src/desktop.rs` : chargement migré, initialisation d’une session après une nouvelle comparaison, remise à zéro de la session lors d’une nouvelle double vérification. Commandes `list_review`, `resolve_review`, `restore_review`, `review_pending_total` ; `save_edit` accepte une révision optionnelle et renvoie le document enregistré. Le snapshot ajoute `reviewPendingTotal`.
+- `src/review.ts`, `src/reviewClient.ts`, `src/domain.ts` : types et client IPC ; `changeReviewed`, `change`, `undo` et `redo` conservent les états de relecture dans la pile d’édition existante, limitée à 100 modifications. Le branchement des nouveaux contrôles sur ces commandes est réservé à la phase 7 ; l’interface de proposition historique reste en place jusque-là.
+- `tests/fixtures/history-v1.2.0.json` : fixture JSON synthétique conforme au véritable schéma de stockage antérieur, avec comparaison et transcription sans second avis ; aucun historique utilisateur ni audio privé n’a été utilisé.
+
+| Commande | Résultat |
+|---|---|
+| `npm run build` | TypeScript et Vite réussis |
+| `npm test` | 23 tests réussis, 8 fichiers |
+| `ELPO_CHROMIUM_EXECUTABLE=/usr/bin/chromium npm run test:browser` | 26 tests réussis, IPC simulé |
+| `cargo test -p elpo-core --locked` | 35 tests réussis, dont 7 nouveaux tests de session |
+| `cargo test -p elpotranscribe --locked` | 8 tests portables réussis, dont 5 tests du véritable stockage historique ; module desktop macOS exclu sur Linux |
+| `cargo clippy -p elpo-core --locked -- -D warnings` | Réussi |
+
+Les tests Rust couvrent acceptation/conservation/modification, annulation/rétablissement, temps et autres segments inchangés, divergences adjacentes, désaccord réel à cheval sur deux segments, plages Unicode et séparateurs, éditions périmées, métadonnées immuables, absence de second avis, migration répétée avec sauvegarde exacte, reprise après fermeture, JSON corrompu/future version et échec d’écriture. Les quatre nouveaux tests TypeScript couvrent la pile commune, l’invalidation, les paramètres IPC et la propagation d’une révision périmée. Les tests navigateur existants vérifient l’absence de régression de l’éditeur ; ils ne testent pas encore les nouveaux contrôles de relecture.
+
+Aucun écran modifié : pas de nouvelles captures pour cette phase. À vérifier sur Mac : `npm run native:build`, `swift test --package-path native/swift`, `cargo test -p elpotranscribe --locked`, puis `npm run tauri -- build --target aarch64-apple-darwin -- --locked`. Ni compilation Tauri, ni migration d’un historique utilisateur réel, ni essai M2 8 Go de cette branche n’ont été réalisés. Aucun nouveau DMG publié. Prochaine phase : **7 — Relecture dans l’éditeur**.
+
 ## Refonte de l’interface — Phase 5 (15 octobre 2026)
 
 Bibliothèque unique implémentée. `src/Library.tsx`, `src/library.ts`, `src/App.tsx` et `src/style.css` remplacent Tableau de bord/Mes transcriptions et les cartes statistiques par la liste complète, archives incluses. Nouvelle transcription est une action (bouton avec ⌘N et menu natif existant), plus une entrée de navigation. La barre de commandes sous le titre contient création, recherche et résumé moteur/langue/profil ; ce dernier ouvre les mêmes réglages dans un popover. Le titre reste dans la barre native de 52 px.

@@ -1,3 +1,4 @@
+import { reconcileReview, type ReviewSession } from "./review";
 export interface VocabularyProfile {
   id: string;
   name: string;
@@ -21,6 +22,8 @@ export interface Settings {
   selectedProfileId?: string | null;
 }
 export interface Job {
+  reviewState?: ReviewSession | null;
+  editRevision?: number;
   archived?: boolean;
   id: string;
   source: string;
@@ -66,6 +69,7 @@ export interface ModelUpdate {
   error: string | null;
 }
 export interface Snapshot {
+  reviewPendingTotal?: number;
   profiles?: VocabularyProfile[];
   jobs: Job[];
   settings: Settings;
@@ -114,28 +118,63 @@ export interface EditState {
   past: Cue[][];
   present: Cue[];
   future: Cue[][];
+  reviewState?: ReviewSession | null;
+  pastReviews?: (ReviewSession | null)[];
+  futureReviews?: (ReviewSession | null)[];
 }
-export function change(state: EditState, cues: Cue[]): EditState {
+/** Push a backend-reviewed document on the same stack as text and timing edits. */
+export function changeReviewed(
+  state: EditState,
+  cues: Cue[],
+  reviewState: ReviewSession | null,
+): EditState {
   return {
     past: [...state.past.slice(-99), state.present],
     present: cues,
     future: [],
+    reviewState,
+    pastReviews: [
+      ...(state.pastReviews ?? state.past.map(() => null)).slice(-99),
+      state.reviewState ?? null,
+    ],
+    futureReviews: [],
   };
+}
+export function change(state: EditState, cues: Cue[]): EditState {
+  return changeReviewed(
+    state,
+    cues,
+    reconcileReview(state.reviewState ?? null, cues),
+  );
 }
 export function undo(state: EditState): EditState {
   if (!state.past.length) return state;
+  const reviews = state.pastReviews ?? state.past.map(() => null);
   return {
     past: state.past.slice(0, -1),
     present: state.past.at(-1)!,
     future: [state.present, ...state.future],
+    reviewState: reviews.at(-1) ?? null,
+    pastReviews: reviews.slice(0, -1),
+    futureReviews: [
+      state.reviewState ?? null,
+      ...(state.futureReviews ?? state.future.map(() => null)),
+    ],
   };
 }
 export function redo(state: EditState): EditState {
   if (!state.future.length) return state;
+  const reviews = state.futureReviews ?? state.future.map(() => null);
   return {
     past: [...state.past, state.present],
     present: state.future[0],
     future: state.future.slice(1),
+    reviewState: reviews[0] ?? null,
+    pastReviews: [
+      ...(state.pastReviews ?? state.past.map(() => null)),
+      state.reviewState ?? null,
+    ],
+    futureReviews: reviews.slice(1),
   };
 }
 // Splitting is an explicit editor operation at the user's playback position, never generated alignment.

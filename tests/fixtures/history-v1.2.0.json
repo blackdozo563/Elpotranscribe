@@ -1,0 +1,113 @@
+{
+  "jobs": [
+    {
+      "id": "legacy-comparison",
+      "source": "/fixture/Prêche français.mp3",
+      "name": "Prêche français.mp3",
+      "size": 17800000,
+      "durationMs": 1200000,
+      "status": "completed",
+      "cues": [
+        {
+          "startMs": 190,
+          "endMs": 4720,
+          "text": "Demain ce foir, à Paris."
+        },
+        {
+          "startMs": 4720,
+          "endMs": 6000,
+          "text": "Il a pleuré."
+        }
+      ],
+      "error": null,
+      "exportPath": "/fixture/Prêche français.srt",
+      "dirty": false,
+      "createdAt": 1780000000,
+      "language": "fr",
+      "engine": "ultra",
+      "modelVersion": "legacy-ultra",
+      "timingNote": null,
+      "profileSnapshot": null,
+      "verificationStatus": "completed",
+      "verificationError": null,
+      "archived": true,
+      "verification": {
+        "secondaryEngine": "whisper-turbo",
+        "secondaryVersion": "large-v3-turbo-Q5_0",
+        "secondaryTimingNote": null,
+        "referenceCues": [
+          {
+            "startMs": 190,
+            "endMs": 4720,
+            "text": "Demain ce foir, à Paris."
+          },
+          {
+            "startMs": 4720,
+            "endMs": 6000,
+            "text": "Il a pleuré."
+          }
+        ],
+        "review": {
+          "approximate": false,
+          "differences": [
+            {
+              "cueIndex": 0,
+              "primaryText": "Demain ce foir, à Paris.",
+              "candidateText": "Demain ce soir, à Paris.",
+              "alternativeText": "Demain ce soir, à Paris.",
+              "profileTerm": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "legacy-plain",
+      "source": "/fixture/Prêche français.mp3",
+      "name": "Prêche français.mp3",
+      "size": 17800000,
+      "durationMs": 1200000,
+      "status": "completed",
+      "cues": [
+        {
+          "startMs": 190,
+          "endMs": 4720,
+          "text": "Demain ce foir, à Paris."
+        },
+        {
+          "startMs": 4720,
+          "endMs": 6000,
+          "text": "Il a pleuré."
+        }
+      ],
+      "error": null,
+      "exportPath": "/fixture/Prêche français.srt",
+      "dirty": false,
+      "createdAt": 1780000000,
+      "language": "fr",
+      "engine": "ultra",
+      "modelVersion": "legacy-ultra",
+      "timingNote": null,
+      "profileSnapshot": null,
+      "verificationStatus": null,
+      "verificationError": null,
+      "archived": false,
+      "verification": null
+    }
+  ],
+  "settings": {
+    "engine": "ultra",
+    "autoModelUpdates": true,
+    "language": "fr",
+    "autoSave": false,
+    "subtitles": {
+      "lineLength": 42,
+      "maxLines": 2,
+      "maxDurationMs": 6000
+    },
+    "vocabulary": [
+      "Évangile"
+    ],
+    "selectedProfileId": null
+  }
+}
