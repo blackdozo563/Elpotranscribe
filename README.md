@@ -4,7 +4,7 @@ Application française de transcription locale pour macOS 14+ Apple Silicon. Deu
 
 La **préversion 1.2.0 est publiée** : [télécharger le DMG Apple Silicon](https://github.com/blackdozo563/Elpotranscribe/releases/download/v1.2.0/ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.2.0.dmg). Le contrôle court natif a réussi et le téléchargement a été revérifié. SHA-256 : `1fee109164179c025d7bb018496527d2cbe82932b3969bbb9695359897377ce8`. Signature ad hoc, non notariée. Le test long reste indépendant ; les performances sur M2 8 Go physique sont à mesurer.
 
-La refonte en cours sur `refonte-interface` conserve les moteurs et données de 1.2.0. Les phases 1 à 4 (audit, fenêtre/menus, fondations visuelles, nettoyage et modèles) sont implémentées et validées côté Linux ; les phases 5 à 11 restent à faire, ainsi que la compilation et la validation native macOS de cette branche. Son bundle porte le nom `Elpotranscribe.app` ; le DMG **déjà publié ci-dessus conserve son ancien nom** `ELPOTRANSCRIBE.app`. Adaptez le chemin des commandes de benchmark si vous utilisez ce DMG. Les phases validées sont décrites dans [l’audit UI](docs/UI-AUDIT.md) et [le rapport de validation](docs/VALIDATION.md). Aucune nouvelle préversion de la refonte n’est encore publiée.
+La refonte en cours sur `refonte-interface` conserve les moteurs et données de 1.2.0. Les phases 1 à 5 (audit, fenêtre/menus, fondations visuelles, nettoyage/modèles et bibliothèque unique) sont implémentées et validées côté Linux ; les phases 6 à 11 restent à faire, ainsi que la compilation et la validation native macOS de cette branche. Son bundle porte le nom `Elpotranscribe.app` ; le DMG **déjà publié ci-dessus conserve son ancien nom** `ELPOTRANSCRIBE.app`. Adaptez le chemin des commandes de benchmark si vous utilisez ce DMG. Les phases validées sont décrites dans [l’audit UI](docs/UI-AUDIT.md) et [le rapport de validation](docs/VALIDATION.md). Aucune nouvelle préversion de la refonte n’est encore publiée.
 
 ## Transcrire et relire
 
@@ -16,7 +16,7 @@ La double vérification est inversable : Ultra puis Turbo ou Turbo puis Ultra. L
 
 L’éditeur permet l’écoute, la modification des textes et des temps, la scission/fusion et l’annulation. Rechercher / Remplacer (⌘F ou Ctrl+F) propose précédent/suivant, compteur, casse, mot entier, remplacement unique/global annulable. Les suggestions de vocabulaire proches (distance de Levenshtein ≤ 2, accents ignorés) sont surlignées et applicables en un clic annulable. Sélectionner un mot puis « Ajouter au profil » enrichit le profil actif.
 
-« Supprimer » retire le résultat du lot et de l’historique après confirmation native, sans supprimer l’audio source ni ses exports. « Nouveau lot » archive. Les exports SRT/TXT/VTT/ZIP sont atomiques ; l’export automatique conserve un SRT existant et l’éditeur demande confirmation pour l’écraser.
+« Supprimer » retire le résultat du lot et de l’historique après confirmation native, sans supprimer l’audio source ni ses exports. « Nouveau lot » archive. Sur la branche de refonte, la Bibliothèque conserve ces archives dans la même liste, avec recherche dans les noms et textes, tri, menus par ligne et réglages de transcription regroupés. Les exports SRT/TXT/VTT/ZIP sont atomiques ; l’export automatique conserve un SRT existant et l’éditeur demande confirmation pour l’écraser.
 
 ## Profils de vocabulaire
 

@@ -1,5 +1,6 @@
+import Library from "./Library";
 import Models from "./Models";
-import { number, bytes } from "./format";
+import { number } from "./format";
 import {
   Button,
   Popover,
@@ -7,7 +8,6 @@ import {
   TextField,
   TextArea,
   NumberStepper,
-  StatusPill,
 } from "./components/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke, convertFileSrc, isTauri } from "@tauri-apps/api/core";
@@ -24,7 +24,7 @@ import {
 import { nearMisses } from "./profileReview";
 import {
   AudioLines,
-  LayoutDashboard,
+  LibraryBig,
   Plus,
   History,
   ScanText,
@@ -40,7 +40,6 @@ import {
   Check,
   FileAudio,
   BookOpen,
-  Cpu,
   PanelLeft,
   Save,
   Undo2,
@@ -68,36 +67,21 @@ import {
   validate,
 } from "./domain";
 const navigation = [
-  "Tableau de bord",
+  "Bibliothèque",
   "Nouvelle transcription",
-  "Mes transcriptions",
+  "Bibliothèque",
   "Double vérification",
   "Modèles IA",
   "Paramètres",
   "Vocabulaire",
 ];
-const icons = [
-  LayoutDashboard,
-  Plus,
-  History,
-  ScanText,
-  Boxes,
-  Settings2,
-  BookOpen,
-];
+const icons = [LibraryBig, Plus, History, ScanText, Boxes, Settings2, BookOpen];
 const localEngines = [
   { id: "ultra", name: "Parakeet Ultra", disabled: false },
   { id: "whisper-turbo", name: "Whisper large-v3-turbo Q5_0", disabled: false },
 ];
 const engineName = (id: string) =>
   localEngines.find((engine) => engine.id === id)?.name ?? id;
-const labels: Record<string, string> = {
-  pending: "En attente",
-  transcribing: "Transcription",
-  completed: "Terminé",
-  failed: "Erreur",
-  cancelled: "Annulé",
-};
 const initial: Snapshot = {
   jobs: [],
   busy: false,
@@ -123,6 +107,8 @@ export default function App() {
     [operation, setOperation] = useState<string | null>(null),
     [selected, setSelected] = useState<Job | null>(null);
   const profileGuard = useRef<(() => Promise<boolean>) | null>(null);
+  const [verificationSource, setVerificationSource] = useState("");
+  const [dragOver, setDragOver] = useState(false);
   const [localOpen, setLocalOpen] = useState(false);
   const localAnchor = useRef<HTMLButtonElement>(null);
   const closeLocal = useCallback(() => setLocalOpen(false), []);
@@ -205,23 +191,13 @@ export default function App() {
   const run = (command: string, args?: Record<string, unknown>) => {
     void action(command, args).catch(() => {});
   };
-  const confirmAndRun = (
-    message: string,
-    command: string,
-    args?: Record<string, unknown>,
-  ) => {
-    void action("confirm_action", { message })
-      .then((confirmed) => {
-        if (confirmed === true) run(command, args);
-      })
-      .catch(() => {});
-  };
   useEffect(() => {
     if (!desktop) return;
     let dispose: (() => void) | undefined;
     let closed = false;
     getCurrentWebview()
       .onDragDropEvent((event) => {
+        setDragOver(["enter", "over"].includes(event.payload.type));
         if (event.payload.type === "drop")
           void action("import_files", {
             folder: false,
@@ -239,10 +215,6 @@ export default function App() {
     };
   }, [desktop, action]);
   const batch = data.jobs.filter((j) => !j.archived);
-  const visibleJobs = page === 2 ? data.jobs : batch;
-  const completed = batch.filter((j) => j.status === "completed").length;
-  const pending = batch.filter((j) => j.status === "pending").length;
-  const failed = batch.filter((j) => j.status === "failed").length;
   const menuHandler = useRef<(action: MenuAction) => Promise<void>>(
     async () => {},
   );
@@ -272,7 +244,7 @@ export default function App() {
     else if (command === "settings") await navigate(5);
     else if (["new", "import-audio", "import-folder"].includes(command)) {
       if (data.busy || working || batch.length >= 10) return;
-      if (await navigate(1))
+      if (await navigate(0))
         await action("import_files", { folder: command === "import-folder" });
     } else if (selected) {
       window.dispatchEvent(
@@ -324,7 +296,28 @@ export default function App() {
     batch.length,
   ]);
   return (
-    <div className={`shell${sidebarHidden ? " sidebar-hidden" : ""}`}>
+    <div
+      className={`shell${sidebarHidden ? " sidebar-hidden" : ""}`}
+      onDragOver={(event) => {
+        event.preventDefault();
+        if (event.dataTransfer.types.includes("Files")) setDragOver(true);
+      }}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null))
+          setDragOver(false);
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        setDragOver(false);
+        if (!desktop) run("import_files", { folder: false });
+      }}
+    >
+      {dragOver && (
+        <div className="drop-overlay" role="status">
+          <FileAudio size={38} />
+          <strong>Déposez vos fichiers audio</strong>
+        </div>
+      )}
       <aside className="sidebar">
         <div className="brand">
           <span className="brandmark">
@@ -335,7 +328,8 @@ export default function App() {
           </div>
         </div>
         <nav>
-          {navigation.map((label, i) => {
+          {[0, 3, 6, 4, 5].map((i) => {
+            const label = navigation[i];
             const Icon = icons[i];
             return (
               <Button
@@ -467,374 +461,117 @@ export default function App() {
           ) : (
             <>
               {(page === 0 || page === 1 || page === 2) && (
-                <>
-                  <div className="stats">
-                    <div>
-                      <span className="stat-icon violet">
-                        <FileAudio />
-                      </span>
-                      <section>
-                        <small>Fichiers du lot</small>
-                        <strong>
-                          {number(batch.length)}
-                          <em> / 10</em>
-                        </strong>
-                      </section>
-                    </div>
-                    <div>
-                      <span className="stat-icon green">
-                        <Check />
-                      </span>
-                      <section>
-                        <small>Transcriptions terminées</small>
-                        <strong>{number(completed)}</strong>
-                      </section>
-                    </div>
-                    <div>
-                      <span className="stat-icon amber">
-                        <Boxes />
-                      </span>
-                      <section>
-                        <small>Moteur local</small>
-                        <strong className="stat-text">
-                          {engineName(data.settings.engine)}
-                        </strong>
-                        <small>
-                          {data.modelInstalled
-                            ? "Installé · local"
-                            : "À installer dans Modèles IA"}
-                        </small>
-                      </section>
-                    </div>
-                  </div>
-                  {page !== 2 && (
-                    <section className="import-card">
-                      <div className="upload-icon">
-                        <FileAudio size={27} />
-                      </div>
-                      <h2>Importer un audio</h2>
-                      <p>
-                        Glissez vos fichiers audio dans la fenêtre, ou
-                        importez-les depuis votre Mac.
-                      </p>
-                      <div className="button-row">
-                        <Button
-                          className="primary"
-                          disabled={data.busy || working || batch.length >= 10}
-                          onClick={() => run("import_files", { folder: false })}
-                        >
-                          <Plus size={17} />
-                          Importer des fichiers audio
-                        </Button>
-                        <Button
+                <Library
+                  data={data}
+                  disabled={data.busy || working}
+                  desktop={desktop}
+                  action={action}
+                  onError={setError}
+                  onOpen={setSelected}
+                  onSecondOpinion={(job) => {
+                    setVerificationSource(job.id);
+                    setPage(3);
+                  }}
+                  settingsPanel={
+                    <section className="panel engine-panel">
+                      <label>
+                        Mode
+                        <Select
+                          aria-label="Moteur de transcription"
+                          value={data.settings.engine}
                           disabled={data.busy || working}
-                          onClick={() => run("import_files", { folder: true })}
-                        >
-                          <FolderOpen size={17} />
-                          Choisir un dossier
-                        </Button>
-                      </div>
-                      <small>
-                        MP3, WAV, M4A, AAC, FLAC, AIFF · OGG et WebM selon les
-                        codecs macOS · 10 fichiers maximum
-                      </small>
-                    </section>
-                  )}
-                  <section className="panel engine-panel">
-                    <div>
-                      <span className="section-icon">
-                        <Cpu size={20} />
-                      </span>
-                      <div>
-                        <h3>Moteur de transcription</h3>
-                        <p>Un seul modèle chargé. Un fichier à la fois.</p>
-                      </div>
-                    </div>
-                    <label>
-                      Mode
-                      <Select
-                        aria-label="Moteur de transcription"
-                        value={data.settings.engine}
-                        disabled={data.busy || working}
-                        onChange={(e) =>
-                          run("save_settings", {
-                            settings: {
-                              ...data.settings,
-                              engine: e.target.value,
-                              language:
-                                e.target.value === "ultra" &&
-                                data.settings.language === "ar"
-                                  ? "auto"
-                                  : data.settings.language,
-                            },
-                          })
-                        }
-                      >
-                        <option value="ultra">Rapide — Parakeet Ultra</option>
-                        <option value="whisper-turbo">
-                          Qualité — Whisper large-v3-turbo · Q5_0 · Metal
-                        </option>
-                      </Select>
-                    </label>
-                    <label>
-                      Langue
-                      <Select
-                        aria-label="Langue"
-                        value={data.settings.language}
-                        disabled={data.busy}
-                        onChange={(e) =>
-                          run("save_settings", {
-                            settings: {
-                              ...data.settings,
-                              language: e.target.value,
-                              selectedProfileId: null,
-                            },
-                          })
-                        }
-                      >
-                        {[
-                          ["auto", "Détection automatique"],
-                          ["fr", "Français"],
-                          ["en", "Anglais — US, UK et autres accents"],
-                          ["es", "Espagnol"],
-                          ["de", "Allemand"],
-                          ["it", "Italien"],
-                          ["pt", "Portugais"],
-                          ...(data.settings.engine !== "ultra"
-                            ? [["ar", "Arabe"]]
-                            : []),
-                        ].map(([v, l]) => (
-                          <option key={v} value={v}>
-                            {l}
-                          </option>
-                        ))}
-                      </Select>
-                    </label>
-                    <label>
-                      Profil de vocabulaire
-                      <Select
-                        aria-label="Profil de vocabulaire"
-                        value={data.settings.selectedProfileId ?? ""}
-                        disabled={data.busy || working}
-                        onChange={(e) => {
-                          const profile = data.profiles?.find(
-                            (p) => p.id === e.target.value,
-                          );
-                          run("save_settings", {
-                            settings: {
-                              ...data.settings,
-                              selectedProfileId: profile?.id ?? null,
-                              language:
-                                profile?.language ?? data.settings.language,
-                            },
-                          });
-                        }}
-                      >
-                        <option value="">Aucun profil</option>
-                        {data.profiles?.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name}
-                          </option>
-                        ))}
-                      </Select>
-                    </label>
-                    <Button
-                      onClick={() => {
-                        void navigate(6);
-                      }}
-                    >
-                      Modifier le profil…
-                    </Button>
-                  </section>
-                  <section className="panel queue">
-                    <div className="panel-heading">
-                      <div>
-                        <h2>
-                          File de transcription{" "}
-                          <span className="number">
-                            {number(batch.length)} / 10
-                          </span>
-                        </h2>
-                        <p>
-                          {number(completed)} terminé{completed > 1 ? "s" : ""}{" "}
-                          · {number(failed)} erreur{failed > 1 ? "s" : ""}
-                          {data.busy ? " · Traitement en cours" : ""}
-                        </p>
-                      </div>
-                      <Button
-                        className="primary"
-                        disabled={
-                          !desktop ||
-                          !data.modelInstalled ||
-                          !pending ||
-                          data.busy ||
-                          working
-                        }
-                        onClick={() => run("start_batch")}
-                      >
-                        {data.busy ? (
-                          <LoaderCircle className="spin" size={16} />
-                        ) : (
-                          <Play size={16} />
-                        )}
-                        {data.busy ? "Traitement en cours…" : "Tout transcrire"}
-                      </Button>
-                    </div>
-                    <div className="table-wrap">
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>FICHIER AUDIO</th>
-                            <th>DURÉE</th>
-                            <th>STATUT</th>
-                            <th>ACTIONS</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {visibleJobs.map((j) => (
-                            <tr key={j.id}>
-                              <td>
-                                <div className="file-name">
-                                  <span className="file-icon">
-                                    <FileAudio size={19} />
-                                  </span>
-                                  <div>
-                                    <strong>{j.name}</strong>
-                                    <small>
-                                      {bytes(j.size)} · {j.engine}
-                                      {j.dirty && j.status === "completed"
-                                        ? " · SRT à enregistrer"
-                                        : ""}
-                                    </small>
-                                    {j.timingNote && (
-                                      <small>{j.timingNote}</small>
-                                    )}
-                                    {j.error && (
-                                      <small className="job-error">
-                                        {j.error}
-                                      </small>
-                                    )}
-                                  </div>
-                                </div>
-                              </td>
-                              <td className="mono">
-                                {time(j.durationMs).slice(0, 8)}
-                              </td>
-                              <td>
-                                <StatusPill status={j.status}>
-                                  {j.status === "transcribing" && (
-                                    <LoaderCircle size={12} className="spin" />
-                                  )}
-                                  {labels[j.status] ?? j.status}
-                                </StatusPill>
-                              </td>
-                              <td>
-                                <div className="row-actions">
-                                  {j.status === "completed" && (
-                                    <Button onClick={() => setSelected(j)}>
-                                      Ouvrir
-                                      <ArrowUpRight size={13} />
-                                    </Button>
-                                  )}
-                                  {["failed", "cancelled"].includes(
-                                    j.status,
-                                  ) && (
-                                    <Button
-                                      title="Réessayer"
-                                      onClick={() =>
-                                        run("retry_job", { id: j.id })
-                                      }
-                                    >
-                                      <RotateCcw size={15} />
-                                    </Button>
-                                  )}
-                                  {["pending", "transcribing"].includes(
-                                    j.status,
-                                  ) ? (
-                                    <Button
-                                      title="Annuler"
-                                      onClick={() =>
-                                        run("cancel_job", { id: j.id })
-                                      }
-                                    >
-                                      <X size={16} />
-                                    </Button>
-                                  ) : (
-                                    <Button
-                                      title="Supprimer la transcription"
-                                      aria-label={`Supprimer ${j.name}`}
-                                      disabled={working}
-                                      onClick={() =>
-                                        confirmAndRun(
-                                          "Supprimer cette transcription du lot et de l’historique ? Votre audio d’origine et les exports seront conservés.",
-                                          "remove_job",
-                                          { id: j.id },
-                                        )
-                                      }
-                                    >
-                                      <Trash2 size={14} />
-                                    </Button>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                      {!visibleJobs.length && (
-                        <div className="empty">
-                          <FileAudio size={30} />
-                          <strong>Aucune transcription</strong>
-                          <span>
-                            Importez un audio pour commencer votre première
-                            transcription.
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                    <div className="queue-footer">
-                      <Button
-                        disabled={
-                          !batch.some((j) =>
-                            ["completed", "failed", "cancelled"].includes(
-                              j.status,
-                            ),
-                          )
-                        }
-                        onClick={() => run("archive_completed")}
-                      >
-                        Nouveau lot
-                      </Button>
-                      <small>
-                        Nouveau lot conserve les résultats dans « Mes
-                        transcriptions ». La corbeille les supprime de
-                        l’historique, sans effacer les audios.
-                      </small>
-                      <label className="check-label">
-                        <TextField
-                          type="checkbox"
-                          checked={data.settings.autoSave}
                           onChange={(e) =>
                             run("save_settings", {
                               settings: {
                                 ...data.settings,
-                                autoSave: e.target.checked,
+                                engine: e.target.value,
+                                language:
+                                  e.target.value === "ultra" &&
+                                  data.settings.language === "ar"
+                                    ? "auto"
+                                    : data.settings.language,
                               },
                             })
                           }
-                        />
-                        Enregistrer les SRT dans les dossiers d’origine
+                        >
+                          <option value="ultra">Rapide — Parakeet Ultra</option>
+                          <option value="whisper-turbo">
+                            Qualité — Whisper large-v3-turbo · Q5_0 · Metal
+                          </option>
+                        </Select>
+                      </label>
+                      <label>
+                        Langue
+                        <Select
+                          aria-label="Langue"
+                          value={data.settings.language}
+                          disabled={data.busy}
+                          onChange={(e) =>
+                            run("save_settings", {
+                              settings: {
+                                ...data.settings,
+                                language: e.target.value,
+                                selectedProfileId: null,
+                              },
+                            })
+                          }
+                        >
+                          {[
+                            ["auto", "Détection automatique"],
+                            ["fr", "Français"],
+                            ["en", "Anglais — US, UK et autres accents"],
+                            ["es", "Espagnol"],
+                            ["de", "Allemand"],
+                            ["it", "Italien"],
+                            ["pt", "Portugais"],
+                            ...(data.settings.engine !== "ultra"
+                              ? [["ar", "Arabe"]]
+                              : []),
+                          ].map(([v, l]) => (
+                            <option key={v} value={v}>
+                              {l}
+                            </option>
+                          ))}
+                        </Select>
+                      </label>
+                      <label>
+                        Profil de vocabulaire
+                        <Select
+                          aria-label="Profil de vocabulaire"
+                          value={data.settings.selectedProfileId ?? ""}
+                          disabled={data.busy || working}
+                          onChange={(e) => {
+                            const profile = data.profiles?.find(
+                              (p) => p.id === e.target.value,
+                            );
+                            run("save_settings", {
+                              settings: {
+                                ...data.settings,
+                                selectedProfileId: profile?.id ?? null,
+                                language:
+                                  profile?.language ?? data.settings.language,
+                              },
+                            });
+                          }}
+                        >
+                          <option value="">Aucun profil</option>
+                          {data.profiles?.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name}
+                            </option>
+                          ))}
+                        </Select>
                       </label>
                       <Button
-                        disabled={!completed}
-                        onClick={() => run("export_zip")}
+                        onClick={() => {
+                          void navigate(6);
+                        }}
                       >
-                        <Download size={16} />
-                        Tous les SRT en ZIP
+                        Modifier le profil…
                       </Button>
-                    </div>
-                  </section>
-                </>
+                    </section>
+                  }
+                />
               )}
               {page === 4 && (
                 <Models
@@ -848,6 +585,7 @@ export default function App() {
               {page === 3 && (
                 <>
                   <VerificationPanel
+                    initialSourceId={verificationSource}
                     data={data}
                     disabled={!desktop || working || data.busy}
                     run={run}
@@ -892,16 +630,25 @@ function VerificationPanel({
   disabled,
   run,
   open,
+  initialSourceId,
 }: {
+  initialSourceId?: string;
   data: Snapshot;
   disabled: boolean;
   run: (command: string, args?: Record<string, unknown>) => void;
   open: (job: Job) => void;
 }) {
-  const [source, setSource] = useState("");
+  const [source, setSource] = useState(initialSourceId ?? "");
   const [primary, setPrimary] = useState("ultra");
   const [secondary, setSecondary] = useState("whisper-turbo");
-  const sources = data.jobs.filter(
+  const preferredSource = data.jobs.find((job) => job.id === initialSourceId);
+  const orderedSources = preferredSource
+    ? [
+        preferredSource,
+        ...data.jobs.filter((job) => job.id !== preferredSource.id),
+      ]
+    : data.jobs;
+  const sources = orderedSources.filter(
     (job, index, jobs) =>
       jobs.findIndex((other) => other.source === job.source) === index,
   );

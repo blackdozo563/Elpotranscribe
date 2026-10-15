@@ -67,7 +67,7 @@ async function fixture(page: Page) {
             jobId?: string;
           },
         ) => {
-          if (command === "snapshot") return state;
+          if (command === "snapshot") return structuredClone(state);
           if (command === "confirm_action")
             return (
               (window as unknown as { __TEST_CONFIRM__?: boolean })
@@ -202,8 +202,9 @@ test("sélection du profil : langue automatique et lien vers le bon profil", asy
   page,
 }) => {
   await fixture(page);
+  await page.getByRole("button", { name: "Bibliothèque", exact: true }).click();
   await page
-    .getByRole("button", { name: "Nouvelle transcription", exact: true })
+    .getByRole("button", { name: /Réglages de transcription :/ })
     .click();
   await page
     .getByLabel("Profil de vocabulaire", { exact: true })
@@ -250,9 +251,7 @@ test("éditeur : terme proche, remplacement annulable et ajout au profil persist
       },
     ];
   });
-  await page
-    .getByRole("button", { name: "Nouvelle transcription", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Bibliothèque", exact: true }).click();
   await page.getByRole("button", { name: "Ouvrir", exact: true }).click();
   const cue = page.getByRole("textbox", { name: "Sous-titre 1", exact: true });
   await expect(

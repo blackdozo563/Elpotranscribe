@@ -1,5 +1,34 @@
 # Validation réellement effectuée
 
+## Refonte de l’interface — Phase 5 (15 octobre 2026)
+
+Bibliothèque unique implémentée. `src/Library.tsx`, `src/library.ts`, `src/App.tsx` et `src/style.css` remplacent Tableau de bord/Mes transcriptions et les cartes statistiques par la liste complète, archives incluses. Nouvelle transcription est une action (bouton avec ⌘N et menu natif existant), plus une entrée de navigation. La barre de commandes sous le titre contient création, recherche et résumé moteur/langue/profil ; ce dernier ouvre les mêmes réglages dans un popover. Le titre reste dans la barre native de 52 px.
+
+Recherche locale dans les titres et cues, insensible à la casse/aux accents, avec espaces normalisés et recherche entre deux sous-titres. Tri par nom naturel fr-FR, durée, moteur, date ou libellé français du statut, dans les deux sens. Aucun ordre du Store n’est modifié. Noms tronqués avec title, taille décimale et moteur sur la ligne secondaire, dates converties depuis les vraies secondes Unix, durées depuis durationMs. Une donnée absente est affichée « — ».
+
+Double-clic et Ouvrir ouvrent l’éditeur ; menus natifs par ligne : ouvrir, second avis, export SRT via le dialogue existant, suppression avec confirmation. Un second avis sur une copie déjà vérifiée du même audio conserve l’ID choisi dans l’ancien formulaire, même après déduplication des sources. Le remplacement de ce formulaire reste la phase 8 ; aucun nouveau calcul ou pourcentage d’inférence n’est ajouté.
+
+Zone de dépôt uniquement dans la bibliothèque vide, avec icône audio ; voile de dépôt global piloté par les événements de dépôt (Tauri sur Mac, événements DOM pour l’aperçu navigateur). Le compteur du lot apparaît à partir de huit fichiers avec son explication. Les notes de temps sont remplacées dans la liste par une icône d’information ; les dépassements sont comptés sur les textes/bornes réels et les réglages actuels, sans créer de temps. Nouveau lot archive : les lignes restent visibles dans cette bibliothèque unique. La suppression continue de retirer la ligne immédiatement ; source et exports ne sont pas supprimés par la commande existante.
+
+`src/Models.tsx` reçoit également deux ajustements de suivi : une réinstallation efface l’ancien message « Intégrité vérifiée », et les tailles sont relues quand les métadonnées de version changent. Le scénario du menu de modèle teste maintenant cette disparition du message ; pas de nouveau chargement d’inférence.
+
+`tests/library.test.ts`, `tests/browser/app.spec.ts`, `tests/browser/profiles.spec.ts` couvrent recherche Unicode/archives/phrase entre cues, tris naturels et français, dépassements calculés sans changer les cues, ouverture, second avis sur une source dupliquée, export, dépôt, compteur proche de la limite, suppression effective et archivage conservateur. Les fixtures de snapshot renvoient maintenant une copie structurée, comme une vraie réponse IPC, plutôt qu’un objet partagé par référence avec le renderer. Les aides de test exposant l’état simulé restent uniquement dans les tests.
+
+| Contrôle exécuté en fin de phase | Résultat |
+|---|---|
+| `npm run build` | TypeScript / Vite réussis |
+| `npm test` | **19 tests réussis**, 7 fichiers |
+| `ELPO_CHROMIUM_EXECUTABLE=/usr/bin/chromium npm run test:browser` | **26 réussis**, IPC simulé |
+| `cargo test -p elpo-core --locked` | **28 réussis**, aucun échec ni ignoré |
+| `cargo clippy -p elpo-core --locked -- -D warnings` | Réussi |
+| `cargo fmt --all --check`, `git diff --check` | Réussis |
+
+Captures avant/après dans `.ui-captures/phase-05/` (non versionné) : les neuf vues précédentes sont conservées avant fusion ; dix vues après, dont bibliothèque, liste vide, réglages, dépôt, modèles, paramètres, vocabulaire et éditeur/recherche. Deux scénarios de capture réussis à 1280 × 800 ; bibliothèque et popover inspectés visuellement. Animations terminées pour les captures déterministes. Ces vues ne prouvent ni l’inférence ni les menus/dépôts AppKit.
+
+**Point d’arrêt propre : fin de phase 5. Reprendre à la phase 6 — Relecture : modèle de données.** Les phases 6 à 11 restent à faire : décisions stables et persistées, relecture intégrée, nouveau parcours du second avis, fenêtre Réglages, vocabulaire et finitions. Aucun début de migration de history.json n’est laissé dans cette phase. Pas de dépendance d’exécution ajoutée ; aucune modification des moteurs, des temps ou des formats d’export. La version publique 1.2.0 et ses assets restent inchangés ; pas de nouveau DMG de la refonte publié.
+
+Contrôles Mac encore nécessaires : compiler le pont et l’application (`npm run native:build`, `swift test --package-path native/swift`, `cargo test -p elpotranscribe --locked`, `npm run tauri -- build --target aarch64-apple-darwin -- --locked`), puis vérifier le verre/boutons de fenêtre, les vrais menus et raccourcis, le dépôt Finder, le second avis et l’export/suppression sur de vrais fichiers. Après les phases 6–11 : relecture entièrement au clavier, double vérification réelle, icône Dock et thème clair. Aucun résultat natif de cette branche n’est revendiqué sous Linux.
+
 ## Refonte de l’interface — Phase 4 (15 octobre 2026)
 
 Nettoyage global et Modèles IA. `src/App.tsx`, `src/Vocabulary.tsx`, `src/style.css` : titre unique dans la barre, suppression des surtitres/accroches/fil d’Ariane et répétitions de confidentialité, logo unique, icônes de navigation distinctes, import avec fichier audio. La pastille Mode local ouvre un popover indiquant le traitement local, l’absence de télémétrie, les usages réseau et le réglage réel de vérification. Les panneaux imbriqués et pastilles sont séparés par les fonds/espacements.

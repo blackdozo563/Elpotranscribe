@@ -44,6 +44,12 @@ export default function Models({
   const [usage, setUsage] = useState<Record<string, Usage>>({});
   const [verified, setVerified] = useState<string | null>(null);
   const installed = data.installedModels.join(",");
+  const versions = data.modelUpdates
+    .map(
+      (update) =>
+        `${update.engine}:${update.installedRevision}:${update.checkedAt}`,
+    )
+    .join(",");
   useEffect(() => {
     let disposed = false;
     setUsage({});
@@ -75,8 +81,10 @@ export default function Models({
       disposed = true;
     };
     // Measurement is read-only: action's global working flag must not reschedule this effect.
-  }, [installed, data.busy]);
+  }, [installed, data.busy, versions]);
   const run = (command: string, args?: Record<string, unknown>) => {
+    if (command === "install_model" || command === "remove_model")
+      setVerified(null);
     void action(command, args).catch((error) => onError(String(error)));
   };
   return (

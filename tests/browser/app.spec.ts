@@ -6,7 +6,7 @@ test("interface française vide et fonctions natives explicitement indiquées", 
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "Tableau de bord" }),
+    page.getByRole("heading", { name: "Bibliothèque" }),
   ).toBeVisible();
   await expect(page.getByText("Aucune transcription")).toBeVisible();
   await page
@@ -217,7 +217,8 @@ async function localReviewFixture(page: import("@playwright/test").Page) {
           },
         ) => {
           calls.push({ command, args });
-          if (command === "snapshot") return state;
+          if (command === "snapshot") return structuredClone(state);
+          if (command === "fixture_state") return state;
           if (command === "model_disk_usage")
             return {
               allocatedBytes: 19300000,
@@ -344,17 +345,15 @@ test("suppression native : retire du lot et de l’historique sans window.confir
       throw new Error("Unsupported WebKit confirm");
     };
   });
-  await page
-    .getByRole("button", { name: "Supprimer Voix.wav", exact: true })
-    .click();
+  await requestRemoval(page, "Voix.wav");
   await expect(
-    page.getByRole("button", { name: "Supprimer Voix.wav", exact: true }),
+    page.getByRole("button", { name: "Options Voix.wav", exact: true }),
   ).toHaveCount(0);
   await page
-    .getByRole("button", { name: "Mes transcriptions", exact: false })
+    .getByRole("button", { name: "Bibliothèque", exact: false })
     .click();
   await expect(
-    page.getByRole("button", { name: "Supprimer Voix.wav", exact: true }),
+    page.getByRole("button", { name: "Options Voix.wav", exact: true }),
   ).toHaveCount(0);
   const commands = await page.evaluate(() =>
     (
@@ -371,11 +370,9 @@ test("annuler la confirmation conserve la transcription ; Nouveau lot archive se
 }) => {
   await localReviewFixture(page);
   await page.evaluate(() => Object.assign(window, { __TEST_CONFIRM__: false }));
-  await page
-    .getByRole("button", { name: "Supprimer Voix.wav", exact: true })
-    .click();
+  await requestRemoval(page, "Voix.wav");
   await expect(
-    page.getByRole("button", { name: "Supprimer Voix.wav", exact: true }),
+    page.getByRole("button", { name: "Options Voix.wav", exact: true }),
   ).toBeEnabled();
   expect(
     await page.evaluate(() =>
@@ -385,14 +382,28 @@ test("annuler la confirmation conserve la transcription ; Nouveau lot archive se
     ),
   ).toBe(false);
   await page.getByRole("button", { name: "Nouveau lot", exact: true }).click();
+  expect(
+    await page.evaluate(async () => {
+      const native = (
+        window as unknown as {
+          __TAURI_INTERNALS__: {
+            invoke: (
+              command: string,
+            ) => Promise<{ jobs: Array<{ archived?: boolean }> }>;
+          };
+        }
+      ).__TAURI_INTERNALS__;
+      return (await native.invoke("fixture_state")).jobs[0].archived;
+    }),
+  ).toBe(true);
   await expect(
-    page.getByRole("button", { name: "Supprimer Voix.wav", exact: true }),
-  ).toHaveCount(0);
+    page.getByRole("button", { name: "Options Voix.wav", exact: true }),
+  ).toBeVisible();
   await page
-    .getByRole("button", { name: "Mes transcriptions", exact: false })
+    .getByRole("button", { name: "Bibliothèque", exact: false })
     .click();
   await expect(
-    page.getByRole("button", { name: "Supprimer Voix.wav", exact: true }),
+    page.getByRole("button", { name: "Options Voix.wav", exact: true }),
   ).toBeVisible();
 });
 
@@ -472,11 +483,11 @@ test("un résultat terminé disparaît immédiatement du lot sans Nouveau lot", 
 }) => {
   await localReviewFixture(page);
   const remove = page.getByRole("button", {
-    name: "Supprimer Voix.wav",
+    name: "Options Voix.wav",
     exact: true,
   });
   await expect(remove).toBeVisible();
-  await remove.click();
+  await requestRemoval(page, "Voix.wav");
   await expect(remove).toHaveCount(0);
   const commands = await page.evaluate(() =>
     (
@@ -605,7 +616,7 @@ test("menu Quitter : un traitement exige une confirmation explicite", async ({
         };
       }
     ).__TAURI_INTERNALS__;
-    (await native.invoke("snapshot", {})).busy = true;
+    (await native.invoke("fixture_state", {})).busy = true;
     Object.assign(window, { __TEST_CONFIRM__: false });
   });
   await expect(
@@ -650,6 +661,9 @@ test("contrôles compacts : sélecteur natif, stepper et sauvegarde des valeurs"
   page,
 }) => {
   await localReviewFixture(page);
+  await page
+    .getByRole("button", { name: /Réglages de transcription :/ })
+    .click();
   const selector = page.getByLabel("Moteur de transcription", { exact: true });
   await expect(selector).toHaveAttribute("title", "Rapide — Parakeet Ultra");
   expect(
@@ -701,9 +715,7 @@ test("échelle à 1280 × 800 : boutons sur une ligne et barre d’outils de 52 
   await page.setViewportSize({ width: 1280, height: 800 });
   await localReviewFixture(page);
   for (const name of [
-    "Tableau de bord",
-    "Nouvelle transcription",
-    "Mes transcriptions",
+    "Bibliothèque",
     "Double vérification",
     "Modèles IA",
     "Paramètres",
@@ -711,8 +723,8 @@ test("échelle à 1280 × 800 : boutons sur une ligne et barre d’outils de 52 
   ]) {
     await page
       .getByRole("button", {
-        name: name === "Mes transcriptions" ? /Mes transcriptions/ : name,
-        exact: name !== "Mes transcriptions",
+        name: name === "Bibliothèque" ? /Bibliothèque/ : name,
+        exact: name !== "Bibliothèque",
       })
       .click();
     const wrapped = await page
@@ -758,9 +770,7 @@ test("nettoyage global : aucun texte interne, un titre et une mention de confide
 }) => {
   await localReviewFixture(page);
   for (const name of [
-    "Tableau de bord",
-    "Nouvelle transcription",
-    "Mes transcriptions",
+    "Bibliothèque",
     "Double vérification",
     "Modèles IA",
     "Paramètres",
@@ -768,8 +778,8 @@ test("nettoyage global : aucun texte interne, un titre et une mention de confide
   ]) {
     await page
       .getByRole("button", {
-        name: name === "Mes transcriptions" ? /Mes transcriptions/ : name,
-        exact: name !== "Mes transcriptions",
+        name: name === "Bibliothèque" ? /Bibliothèque/ : name,
+        exact: name !== "Bibliothèque",
       })
       .click();
     await expect(page.locator("body")).not.toContainText(
@@ -865,8 +875,224 @@ test("modèles : taille mesurée, choix par défaut et actions natives séparée
         ).__TEST_CALLS__.find((call) => call.command === "verify_model")?.args,
     ),
   ).toEqual({ engine: "whisper-turbo" });
+  await turbo
+    .getByRole("button", {
+      name: "Options Whisper large-v3-turbo Q5_0",
+      exact: true,
+    })
+    .click();
+  await chooseNativeMenu(page, "Réinstaller");
+  await expect(turbo.getByRole("status")).toHaveCount(0);
   await turbo.getByText("Détails techniques", { exact: true }).click();
   await expect(
     turbo.getByText("Révision installée : previous", { exact: false }),
+  ).toBeVisible();
+});
+
+async function chooseNativeMenu(
+  page: import("@playwright/test").Page,
+  text: string,
+) {
+  await expect
+    .poll(() =>
+      page.evaluate((text) => {
+        const calls = (
+          window as unknown as {
+            __TEST_CALLS__: Array<{
+              command: string;
+              args: { options?: { items: Array<{ text?: string }> } };
+            }>;
+          }
+        ).__TEST_CALLS__;
+        return calls
+          .filter((call) => call.command === "plugin:menu|new")
+          .at(-1)
+          ?.args.options?.items.some((item) => item.text === text);
+      }, text),
+    )
+    .toBe(true);
+  await page.evaluate((text) => {
+    const calls = (
+      window as unknown as {
+        __TEST_CALLS__: Array<{
+          command: string;
+          args: {
+            options?: {
+              items: Array<{
+                text?: string;
+                handler?: { onmessage: (id: string) => void };
+              }>;
+            };
+          };
+        }>;
+      }
+    ).__TEST_CALLS__;
+    calls
+      .filter((call) => call.command === "plugin:menu|new")
+      .at(-1)
+      ?.args.options?.items.find((item) => item.text === text)
+      ?.handler?.onmessage("selected");
+  }, text);
+}
+async function requestRemoval(
+  page: import("@playwright/test").Page,
+  name: string,
+) {
+  await page
+    .getByRole("button", { name: `Options ${name}`, exact: true })
+    .click();
+  await chooseNativeMenu(page, "Supprimer de l’historique");
+}
+
+test("bibliothèque : recherche dans les archives, tri et ouverture par double-clic", async ({
+  page,
+}) => {
+  await localReviewFixture(page);
+  await page.evaluate(async () => {
+    const native = (
+      window as unknown as {
+        __TAURI_INTERNALS__: {
+          invoke: (command: string) => Promise<{
+            jobs: Array<{
+              id: string;
+              name: string;
+              cues: Array<{ text: string }>;
+              archived?: boolean;
+            }>;
+          }>;
+        };
+      }
+    ).__TAURI_INTERNALS__;
+    const state = await native.invoke("fixture_state");
+    const other = structuredClone(state.jobs[0]);
+    other.id = "archive";
+    other.name = "Été2.mp3";
+    other.cues[0].text = "Eucharistie et Évangile.";
+    other.archived = true;
+    state.jobs.push(other);
+  });
+  await expect(
+    page.getByRole("button", { name: "Options Été2.mp3", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Mes transcriptions", exact: true }),
+  ).toHaveCount(0);
+  const search = page.getByRole("searchbox", {
+    name: "Rechercher dans la bibliothèque",
+  });
+  await search.fill("evangile");
+  await expect(
+    page.getByRole("button", { name: "Options Voix.wav", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Options Été2.mp3", exact: true }),
+  ).toBeVisible();
+  await search.fill("");
+  await page.getByRole("button", { name: "Nom", exact: true }).click();
+  await expect(page.locator(".library-table tbody tr").first()).toContainText(
+    "Été2.mp3",
+  );
+  await page.locator(".library-table tbody tr").first().dblclick();
+  await expect(page.getByLabel("Sous-titre 1", { exact: true })).toHaveValue(
+    "Eucharistie et Évangile.",
+  );
+});
+test("bibliothèque : second avis sur la bonne source, export et voile de dépôt", async ({
+  page,
+}) => {
+  await localReviewFixture(page);
+  await page.evaluate(() => {
+    const transfer = new DataTransfer();
+    transfer.items.add(
+      new File(["fixture"], "audio.mp3", { type: "audio/mpeg" }),
+    );
+    document
+      .querySelector(".shell")!
+      .dispatchEvent(
+        new DragEvent("dragover", { bubbles: true, dataTransfer: transfer }),
+      );
+  });
+  await expect(
+    page.getByText("Déposez vos fichiers audio", { exact: true }),
+  ).toBeVisible();
+  await page.locator(".shell").dispatchEvent("dragleave");
+  await expect(
+    page.getByText("Déposez vos fichiers audio", { exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Options Voix.wav", exact: true })
+    .click();
+  await chooseNativeMenu(page, "Exporter");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as unknown as {
+              __TEST_CALLS__: Array<{ command: string; args: unknown }>;
+            }
+          ).__TEST_CALLS__.find((c) => c.command === "export_job")?.args,
+      ),
+    )
+    .toEqual({ id: "review-fixture", format: "srt", original: false });
+  await page.evaluate(async () => {
+    const native = (
+      window as unknown as {
+        __TAURI_INTERNALS__: {
+          invoke: (
+            command: string,
+          ) => Promise<{
+            jobs: Array<{ id: string; name: string; archived?: boolean }>;
+          }>;
+        };
+      }
+    ).__TAURI_INTERNALS__;
+    const state = await native.invoke("fixture_state");
+    const copy = structuredClone(state.jobs[0]);
+    copy.id = "copy-review";
+    copy.name = "Copie Voix.wav";
+    copy.archived = true;
+    state.jobs.push(copy);
+  });
+  await page
+    .getByRole("button", { name: "Options Copie Voix.wav", exact: true })
+    .click();
+  await chooseNativeMenu(page, "Demander un second avis");
+  await expect(
+    page.getByLabel("Audio à vérifier", { exact: true }),
+  ).toHaveValue("copy-review");
+});
+
+test("bibliothèque : compteur près de la limite et information calculée sur les cues", async ({
+  page,
+}) => {
+  await localReviewFixture(page);
+  await expect(page.locator(".batch-limit")).toHaveCount(0);
+  await page.evaluate(async () => {
+    const native = (
+      window as unknown as {
+        __TAURI_INTERNALS__: {
+          invoke: (command: string) => Promise<{
+            jobs: Array<{
+              id: string;
+              name: string;
+              cues: Array<{ text: string }>;
+            }>;
+          }>;
+        };
+      }
+    ).__TAURI_INTERNALS__;
+    const state = await native.invoke("fixture_state");
+    state.jobs[0].cues[0].text = "mot ".repeat(20);
+    for (let i = 1; i < 8; i++) {
+      const job = structuredClone(state.jobs[0]);
+      job.id = `fixture-${i}`;
+      job.name = `Audio${i}.mp3`;
+      state.jobs.push(job);
+    }
+  });
+  await expect(page.locator(".batch-limit")).toContainText("8 / 10");
+  await expect(
+    page.getByRole("img", { name: /1 sous-titres dépassent/ }).first(),
   ).toBeVisible();
 });
