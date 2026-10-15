@@ -22,6 +22,11 @@ export interface Settings {
   selectedProfileId?: string | null;
 }
 export interface Job {
+  verificationProgress?: {
+    stage: "queued" | "primary" | "secondary" | "comparison";
+    startedAt: number;
+    secondaryEngine: string;
+  } | null;
   reviewState?: ReviewSession | null;
   editRevision?: number;
   archived?: boolean;

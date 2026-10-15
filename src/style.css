@@ -1994,3 +1994,122 @@ input[type="checkbox"] {
 .review-word.is-unplaced {
   margin-inline-end: 8px;
 }
+
+.second-opinion-sheet {
+  margin: auto;
+  width: min(720px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  padding: 22px;
+  border: 1px solid var(--color-separateur);
+  border-radius: 12px;
+  color: var(--color-texte);
+  background: var(--color-panneau);
+  font-size: 13px;
+}
+.second-opinion-sheet::backdrop {
+  background: color-mix(
+    in srgb,
+    var(--color-fond) 75%,
+    var(--color-transparent)
+  );
+}
+.sheet-heading,
+.sheet-actions,
+.inbox-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.sheet-heading h2 {
+  font-size: 22px;
+  margin: 0;
+}
+.second-opinion-sheet p {
+  margin: 16px 0;
+  line-height: 1.6;
+  color: var(--color-texte-secondaire);
+}
+.second-opinion-sheet label {
+  display: grid;
+  gap: 6px;
+}
+.opinion-engine-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px minmax(0, 1fr);
+  align-items: end;
+  gap: 10px;
+  margin: 18px 0;
+}
+.sheet-actions {
+  justify-content: end;
+  margin-top: 22px;
+}
+.second-opinion-sheet .sheet-error {
+  color: var(--color-erreur);
+}
+.review-inbox {
+  display: grid;
+  gap: 16px;
+}
+.inbox-heading {
+  margin-bottom: 4px;
+  color: var(--color-texte-secondaire);
+}
+.inbox-empty {
+  padding: 44px 16px;
+  text-align: center;
+}
+.inbox-empty h2 {
+  font-size: 22px;
+}
+.inbox-empty p {
+  max-width: 440px;
+  margin: 12px auto;
+  color: var(--color-texte-secondaire);
+}
+.review-inbox-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+.review-inbox-table th {
+  color: var(--color-texte-secondaire);
+  font-size: 12px;
+  font-weight: 400;
+}
+.review-inbox-table th,
+.review-inbox-table td {
+  padding: 10px 12px;
+}
+.review-inbox-table tbody tr {
+  background: var(--color-panneau);
+  border-bottom: 6px solid var(--color-fond);
+}
+.opinion-progress,
+.opinion-interrupted {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+  padding: 16px;
+  border-radius: 8px;
+  background: var(--color-panneau);
+}
+.opinion-progress strong,
+.opinion-interrupted strong {
+  flex-basis: 100%;
+}
+.opinion-progress [role="status"] {
+  flex: 1;
+}
+.opinion-interrupted p {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--color-erreur);
+}
+
+.editor-review-actions {
+  margin-top: 8px;
+}

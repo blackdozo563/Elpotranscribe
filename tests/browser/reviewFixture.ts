@@ -96,12 +96,14 @@ export async function reviewFixture(page: Page) {
     const calls: Array<{ command: string; args: unknown }> = [];
     const persist = () =>
       localStorage.setItem("fixture-review-phase7", JSON.stringify(state));
-    const doc = () =>
-      structuredClone({
-        cues: state.jobs[0].cues,
-        reviewState: state.jobs[0].reviewState,
-        revision: state.jobs[0].editRevision ?? 0,
+    const doc = (id?: string) => {
+      const job = state.jobs.find((j) => j.id === id) ?? state.jobs[0];
+      return structuredClone({
+        cues: job.cues,
+        reviewState: job.reviewState,
+        revision: job.editRevision ?? 0,
       });
+    };
     HTMLMediaElement.prototype.play = function () {
       Object.assign(window, { __TEST_AUDIO_STARTED_AT__: this.currentTime });
       return Promise.resolve();
@@ -122,6 +124,8 @@ export async function reviewFixture(page: Page) {
           command: string,
           args: {
             id?: string;
+            primary?: string;
+            secondary?: string;
             cues?: Cue[];
             reviewState?: ReviewSession;
             expectedRevision?: number;
@@ -143,8 +147,48 @@ export async function reviewFixture(page: Page) {
             return snapshot;
           }
           if (command === "fixture_state") return state;
-          if (command === "list_review") return doc();
-          if (command === "confirm_action") return true;
+          if (command === "list_review") return doc(args.id);
+          if (command === "plugin:menu|new")
+            return [99, "fixture-context-menu"];
+          if (command === "confirm_action")
+            return (
+              (window as unknown as { __TEST_CONFIRM__?: boolean })
+                .__TEST_CONFIRM__ !== false
+            );
+          if (command === "start_verification") {
+            const original = state.jobs.find((j) => j.id === args.id)!;
+            const job: Job = {
+              ...structuredClone(original),
+              id: "opinion-ui",
+              createdAt: Math.floor(Date.now() / 1000),
+              status: "transcribing",
+              archived: true,
+              cues: [],
+              reviewState: null,
+              editRevision: 0,
+              verification: null,
+              verificationStatus: "processing",
+              verificationError: null,
+              engine: args.primary!,
+              verificationProgress: {
+                stage: "queued",
+                startedAt: Math.floor(Date.now() / 1000),
+                secondaryEngine: args.secondary!,
+              },
+            };
+            state.jobs.push(job);
+            state.busy = true;
+            persist();
+            return job.id;
+          }
+          if (command === "cancel_job") {
+            const job = state.jobs.find((j) => j.id === args.id)!;
+            job.verificationStatus = "cancelled";
+            job.status = job.cues.length ? "completed" : "cancelled";
+            state.busy = false;
+            persist();
+            return null;
+          }
           if (command === "export_job") return "/fixture/Voix.srt";
           if (command === "restore_review" || command === "resolve_review") {
             if (
@@ -152,7 +196,7 @@ export async function reviewFixture(page: Page) {
                 .__TEST_REVIEW_FAIL__
             )
               throw new Error("Écriture impossible (simulation)");
-            const job = state.jobs[0];
+            const job = state.jobs.find((j) => j.id === args.id)!;
             if (args.expectedRevision !== (job.editRevision ?? 0))
               throw new Error("Révision périmée");
             if (command === "restore_review") {
@@ -193,7 +237,7 @@ export async function reviewFixture(page: Page) {
             job.editRevision = (job.editRevision ?? 0) + 1;
             job.dirty = true;
             persist();
-            return doc();
+            return doc(args.id);
           }
           return null;
         },
@@ -201,4 +245,55 @@ export async function reviewFixture(page: Page) {
     });
   }, seed);
   await page.goto("/");
+}
+
+/** Explicitly inject observed worker states. This does not run either engine. */
+export async function opinionFixtureStage(
+  page: Page,
+  stage:
+    | "primary"
+    | "secondary"
+    | "comparison"
+    | "completed"
+    | "failed"
+    | "noDifferences",
+) {
+  await page.evaluate((stage) => {
+    const state = (window as unknown as { __TEST_REVIEW_STATE__: Snapshot })
+      .__TEST_REVIEW_STATE__;
+    const job = state.jobs.find((j) => j.id === "opinion-ui")!,
+      source = state.jobs.find((j) => j.id === "review-ui")!;
+    if (["primary", "secondary", "comparison"].includes(stage)) {
+      job.verificationProgress!.stage = stage as
+        | "primary"
+        | "secondary"
+        | "comparison";
+      if (stage !== "primary") job.cues = structuredClone(source.cues);
+      return;
+    }
+    job.status = "completed";
+    state.busy = false;
+    job.cues = structuredClone(source.cues);
+    if (stage === "failed") {
+      job.verificationStatus = "failed";
+      job.verificationError = "Second moteur interrompu (simulation).";
+      return;
+    }
+    job.verificationStatus = "completed";
+    job.verificationProgress!.stage = "comparison";
+    job.reviewState = structuredClone(source.reviewState!);
+    job.reviewState.anchors = job.cues;
+    if (stage === "noDifferences") job.reviewState.differences = [];
+    for (const [i, d] of job.reviewState.differences.entries()) {
+      d.id = `${job.id}:${i}`;
+      d.source.primaryEngine = job.engine;
+      d.source.secondaryEngine = job.verificationProgress!.secondaryEngine;
+    }
+    job.verification = structuredClone(source.verification!);
+    job.verification.secondaryEngine =
+      job.verificationProgress!.secondaryEngine;
+    job.verification.referenceCues = job.cues;
+    if (stage === "noDifferences") job.verification.review.differences = [];
+    localStorage.setItem("fixture-review-phase7", JSON.stringify(state));
+  }, stage);
 }

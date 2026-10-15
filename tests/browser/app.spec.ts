@@ -251,8 +251,9 @@ test("double vérification : inversion puis envoi des moteurs choisis", async ({
   page,
 }) => {
   await localReviewFixture(page);
+  await page.getByRole("button", { name: "À relire", exact: true }).click();
   await page
-    .getByRole("button", { name: "Double vérification", exact: true })
+    .getByRole("button", { name: "Demander un second avis", exact: true })
     .click();
   await expect(
     page.getByLabel("Moteur principal", { exact: true }),
@@ -717,7 +718,7 @@ test("échelle à 1280 × 800 : boutons sur une ligne et barre d’outils de 52 
   await localReviewFixture(page);
   for (const name of [
     "Bibliothèque",
-    "Double vérification",
+    "À relire",
     "Modèles IA",
     "Paramètres",
     "Vocabulaire",
@@ -772,7 +773,7 @@ test("nettoyage global : aucun texte interne, un titre et une mention de confide
   await localReviewFixture(page);
   for (const name of [
     "Bibliothèque",
-    "Double vérification",
+    "À relire",
     "Modèles IA",
     "Paramètres",
     "Vocabulaire",

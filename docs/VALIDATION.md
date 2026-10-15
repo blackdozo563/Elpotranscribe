@@ -1,5 +1,31 @@
 # Validation réellement effectuée
 
+## Refonte de l’interface — Phase 8 (15 octobre 2026)
+
+Second avis intégré au parcours, sans changement d’inférence, d’horodatages ou de formats d’export, ni ajout de dépendance.
+
+- `src/SecondOpinion.tsx`, `src/secondOpinion.ts` : feuille modale centrée, choix d’une transcription terminée, moteurs installés et différents, inversion, explication des deux nouvelles passes et du résultat séparé. Écran « À relire » avec nom, nombre restant et date ; compteur global dans la navigation, résultats archivés inclus, état vide et accès au principal après interruption. Suivi des étapes observées, temps écoulé et annulation existante, sans barre ni pourcentage.
+- `src/App.tsx` : demande depuis l’éditeur ou le menu existant de bibliothèque, protection d’une édition non enregistrée, retrait de l’ancien formulaire `VerificationPanel`. Seul le résultat démarré depuis cette fenêtre est suivi pour l’ouverture automatique en mode Relecture. Si l’utilisateur travaille ailleurs, une notification remplace l’ouverture automatique et protège sa saisie. Un résultat sans divergence montre explicitement « Relecture terminée ». Les actions de relecture sont regroupées sur une seconde ligne de la barre d’outils.
+- `src/domain.ts`, `src-tauri/src/history.rs`, `src-tauri/src/desktop.rs` : champ facultatif `verificationProgress` rétrocompatible, secondes Unix, étapes `queued` → `primary` → `secondary` → `comparison`. Ces étapes n’existaient pas dans le protocole Swift : Rust les enregistre aux frontières effectives des appels existants. La transition est contrôlée et persistée avant publication. Aucun avancement automatique par minuterie ; une étape brève peut ne pas être visible entre deux snapshots. Les étapes ne progressent plus après annulation ou fin. Aucun moteur ni paramètre d’inférence modifié.
+- Le scénario natif ignoré `real_double_verification_preserves_primary_and_reverses_engines` initialise la même attente et vérifie l’étape finale, le second moteur et la validité de la session de relecture. Il reste appelé par `scripts/smoke-release.py`. Les commandes IPC `start_verification` / `cancel_job` conservent leurs arguments et leur résultat ; seuls les snapshots de jobs sont enrichis.
+
+| Commande | Résultat |
+|---|---|
+| `npm run build` | TypeScript et Vite réussis |
+| `npm test` | 30 tests réussis, 10 fichiers ; 3 nouveaux tests de sélection des moteurs, étapes/temps et liste à relire |
+| `ELPO_CHROMIUM_EXECUTABLE=/usr/bin/chromium npm run test:browser` | 39 tests réussis, IPC simulé ; 8 nouveaux scénarios de parcours |
+| `cargo test -p elpo-core --locked` | 35 tests réussis |
+| `cargo test -p elpotranscribe --locked` | 9 tests portables réussis ; nouveau test des transitions, compatibilité de l’ancien historique et arrêt après annulation/fin |
+| `cargo clippy -p elpo-core --locked -- -D warnings` | Réussi |
+| `cargo clippy -p elpotranscribe --tests --locked -- -D warnings` | Réussi, parties portables seulement |
+| `cargo fmt --all --check` | Réussi |
+
+Les tests navigateur couvrent : feuille centrée et inversable, envoi des moteurs choisis, étapes explicitement injectées, absence de pourcentage, compteur mis à jour après résolution, ouverture directe en relecture, résultats archivés, absence de source ou de second moteur installé, confirmation refusée et saisie préservée, annulation, accès au principal après échec, résultat sans divergence et fin de traitement pendant une saisie dans un autre éditeur. Le test de menu de bibliothèque vérifie toujours l’identifiant exact d’une copie du même audio. Le contrôle Rust essaie une transition autrement valide après annulation et exige que l’état reste inchangé. Les fixtures ne prouvent ni l’exécution des moteurs ni leur déchargement.
+
+Captures : trois états avant et sept après dans `.ui-captures/phase-08/`, hors Git, à 1280 × 800. Deux scénarios de capture après réussis ; feuille, suivi et éditeur inspectés visuellement. Ces captures ne prouvent aucune inférence, ni menu, dialogue ou focus natif WKWebView.
+
+À vérifier sur macOS ARM64 : `npm run native:build`, `swift test --package-path native/swift`, `cargo test -p elpotranscribe --locked`, puis `npm run tauri -- build --target aarch64-apple-darwin -- --locked`. Le test natif de double vérification enrichi, ignoré par défaut, doit être exécuté avec les vrais modèles et l’audio par `scripts/smoke-release.py` dans le contexte du packaging documenté. Vérifier aussi le menu réel de bibliothèque, la feuille et son focus, l’annulation à chaque moteur et l’ouverture de relecture avec VoiceOver. Aucun de ces contrôles natifs ni essai M2 8 Go de cette branche n’a été exécuté ici. Aucun nouveau DMG publié. Prochaine phase : **9 — Fenêtre Réglages**.
+
 ## Refonte de l’interface — Phase 7 (15 octobre 2026)
 
 Mode Relecture intégré à l’éditeur, sans changement d’inférence, de segmentation, d’horodatages, de format d’export ni de dépendances.

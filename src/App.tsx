@@ -1,3 +1,5 @@
+import { SecondOpinionSheet, ReviewInbox } from "./SecondOpinion";
+import { pendingInJob } from "./secondOpinion";
 import { ReviewText, ReviewPopover, ReviewGutter } from "./Review";
 import {
   adjacentReview,
@@ -38,12 +40,10 @@ import {
   ScanText,
   Boxes,
   Settings2,
-  ArrowUpRight,
   FolderOpen,
   Play,
   Download,
   X,
-  RotateCcw,
   LoaderCircle,
   Check,
   FileAudio,
@@ -79,7 +79,7 @@ const navigation = [
   "Bibliothèque",
   "Nouvelle transcription",
   "Bibliothèque",
-  "Double vérification",
+  "À relire",
   "Modèles IA",
   "Paramètres",
   "Vocabulaire",
@@ -116,7 +116,13 @@ export default function App() {
     [operation, setOperation] = useState<string | null>(null),
     [selected, setSelected] = useState<Job | null>(null);
   const profileGuard = useRef<(() => Promise<boolean>) | null>(null);
-  const [verificationSource, setVerificationSource] = useState("");
+  const [opinionSource, setOpinionSource] = useState<string | null>(null);
+  const [trackedOpinion, setTrackedOpinion] = useState<string | null>(null);
+  const [selectedReview, setSelectedReview] = useState(false);
+  const pendingTotal = data.jobs.reduce(
+    (sum, job) => sum + pendingInJob(job),
+    0,
+  );
   const [dragOver, setDragOver] = useState(false);
   const [localOpen, setLocalOpen] = useState(false);
   const localAnchor = useRef<HTMLButtonElement>(null);
@@ -137,6 +143,31 @@ export default function App() {
   const refresh = useCallback(async () => {
     if (desktop) setData(await invoke<Snapshot>("snapshot"));
   }, [desktop]);
+  const requestOpinion = (job?: Job) => {
+    void (async () => {
+      if ((await profileGuard.current?.()) === false) return;
+      setOpinionSource(job?.id ?? "");
+    })().catch((error) => setError(String(error)));
+  };
+  const openOpinion = (job: Job, review: boolean) => {
+    setSelectedReview(review);
+    setSelected(job);
+  };
+  useEffect(() => {
+    if (!trackedOpinion) return;
+    const job = data.jobs.find((job) => job.id === trackedOpinion);
+    if (!job || job.verificationStatus === "processing") return;
+    setTrackedOpinion(null);
+    if (job.verificationStatus === "completed" && job.status === "completed") {
+      if (page === 3 && !selected) {
+        setSelectedReview(true);
+        setSelected(job);
+      } else
+        setNotice(
+          "Second avis terminé. La relecture est disponible dans À relire ou dans la bibliothèque.",
+        );
+    }
+  }, [trackedOpinion, data.jobs, page, selected]);
   const lastModelCheck = useRef(0);
   useEffect(() => {
     if (
@@ -327,6 +358,34 @@ export default function App() {
           <strong>Déposez vos fichiers audio</strong>
         </div>
       )}
+      {opinionSource !== null && (
+        <SecondOpinionSheet
+          data={data}
+          sourceId={opinionSource}
+          disabled={!desktop || working || data.busy}
+          close={() => setOpinionSource(null)}
+          models={() => {
+            setOpinionSource(null);
+            void navigate(4);
+          }}
+          start={async (id, primary, secondary) => {
+            const result = await action("start_verification", {
+              id,
+              primary,
+              secondary,
+            });
+            if (typeof result !== "string")
+              throw new Error(
+                "Le second avis n’a pas retourné de résultat identifiable.",
+              );
+            setOpinionSource(null);
+            setSelected(null);
+            setSelectedReview(false);
+            setPage(3);
+            setTrackedOpinion(result);
+          }}
+        />
+      )}
       <aside className="sidebar">
         <div className="brand">
           <span className="brandmark">
@@ -343,6 +402,7 @@ export default function App() {
             return (
               <Button
                 key={label}
+                aria-label={label}
                 className={page === i ? "nav active" : "nav"}
                 onClick={() => {
                   void navigate(i).catch((e) => setError(String(e)));
@@ -350,8 +410,8 @@ export default function App() {
               >
                 <Icon size={18} />
                 {label}
-                {i === 2 && data.jobs.length > 0 && (
-                  <span className="count">{number(data.jobs.length)}</span>
+                {i === 3 && pendingTotal > 0 && (
+                  <span className="count">{number(pendingTotal)}</span>
                 )}
               </Button>
             );
@@ -448,6 +508,10 @@ export default function App() {
           )}
           {selected ? (
             <Editor
+              key={selected.id}
+              startInReview={selectedReview}
+              onSecondOpinion={() => requestOpinion(selected)}
+              canSecondOpinion={desktop && !data.busy && !working}
               profile={
                 data.profiles?.find(
                   (p) =>
@@ -476,11 +540,8 @@ export default function App() {
                   desktop={desktop}
                   action={action}
                   onError={setError}
-                  onOpen={setSelected}
-                  onSecondOpinion={(job) => {
-                    setVerificationSource(job.id);
-                    setPage(3);
-                  }}
+                  onOpen={(job) => openOpinion(job, false)}
+                  onSecondOpinion={requestOpinion}
                   settingsPanel={
                     <section className="panel engine-panel">
                       <label>
@@ -592,15 +653,13 @@ export default function App() {
                 />
               )}
               {page === 3 && (
-                <>
-                  <VerificationPanel
-                    initialSourceId={verificationSource}
-                    data={data}
-                    disabled={!desktop || working || data.busy}
-                    run={run}
-                    open={(job) => setSelected(job)}
-                  />
-                </>
+                <ReviewInbox
+                  data={data}
+                  disabled={!desktop || working || data.busy}
+                  request={() => requestOpinion()}
+                  open={openOpinion}
+                  cancel={(id) => run("cancel_job", { id })}
+                />
               )}
               {page === 6 && (
                 <Vocabulary
@@ -632,207 +691,6 @@ export default function App() {
         </div>
       </main>
     </div>
-  );
-}
-function VerificationPanel({
-  data,
-  disabled,
-  run,
-  open,
-  initialSourceId,
-}: {
-  initialSourceId?: string;
-  data: Snapshot;
-  disabled: boolean;
-  run: (command: string, args?: Record<string, unknown>) => void;
-  open: (job: Job) => void;
-}) {
-  const [source, setSource] = useState(initialSourceId ?? "");
-  const [primary, setPrimary] = useState("ultra");
-  const [secondary, setSecondary] = useState("whisper-turbo");
-  const preferredSource = data.jobs.find((job) => job.id === initialSourceId);
-  const orderedSources = preferredSource
-    ? [
-        preferredSource,
-        ...data.jobs.filter((job) => job.id !== preferredSource.id),
-      ]
-    : data.jobs;
-  const sources = orderedSources.filter(
-    (job, index, jobs) =>
-      jobs.findIndex((other) => other.source === job.source) === index,
-  );
-  const selectedSource = source || sources[0]?.id || "";
-  const missing = [...new Set([primary, secondary])].filter(
-    (engine) => !data.installedModels.includes(engine),
-  );
-  const reports = data.jobs
-    .filter((job) => job.verificationStatus)
-    .slice()
-    .reverse();
-  const active = reports.find((job) => job.verificationStatus === "processing");
-  return (
-    <>
-      <section className="panel preferences">
-        <h2>Comparer deux moteurs</h2>
-        <p>
-          Les deux modèles analysent le même audio l’un après l’autre. Le moteur
-          principal fournit le texte et les horodatages de référence. Un nouveau
-          résultat est créé ; votre transcription précédente reste dans
-          l’historique.
-        </p>
-        <label>
-          Audio à vérifier
-          <Select
-            aria-label="Audio à vérifier"
-            value={selectedSource}
-            disabled={disabled}
-            onChange={(event) => setSource(event.target.value)}
-          >
-            <option value="" disabled>
-              Importez un audio pour commencer
-            </option>
-            {sources.map((job) => (
-              <option value={job.id} key={job.id}>
-                {job.name}
-              </option>
-            ))}
-          </Select>
-        </label>
-        <div className="form-grid">
-          <label>
-            Moteur principal
-            <Select
-              aria-label="Moteur principal"
-              value={primary}
-              disabled={disabled}
-              onChange={(event) => setPrimary(event.target.value)}
-            >
-              {localEngines.map((engine) => (
-                <option
-                  key={engine.id}
-                  value={engine.id}
-                  disabled={engine.disabled}
-                >
-                  {engine.name}
-                </option>
-              ))}
-            </Select>
-          </label>
-          <label>
-            Second avis
-            <Select
-              aria-label="Second avis"
-              value={secondary}
-              disabled={disabled}
-              onChange={(event) => setSecondary(event.target.value)}
-            >
-              {localEngines.map((engine) => (
-                <option
-                  key={engine.id}
-                  value={engine.id}
-                  disabled={engine.disabled}
-                >
-                  {engine.name}
-                </option>
-              ))}
-            </Select>
-          </label>
-        </div>
-        <div className="button-row">
-          <Button
-            disabled={disabled}
-            onClick={() => {
-              setPrimary(secondary);
-              setSecondary(primary);
-            }}
-          >
-            <RotateCcw size={16} />
-            Inverser les moteurs
-          </Button>
-          <Button
-            className="primary"
-            disabled={
-              disabled ||
-              !selectedSource ||
-              primary === secondary ||
-              missing.length > 0
-            }
-            onClick={() =>
-              run("start_verification", {
-                id: selectedSource,
-                primary,
-                secondary,
-              })
-            }
-          >
-            <ScanText size={16} />
-            Transcrire et comparer
-          </Button>
-        </div>
-        {primary === secondary && <p>Choisissez deux moteurs différents.</p>}
-        {missing.length > 0 && (
-          <div className="model-details">
-            <span>Modèles à télécharger sur ce Mac :</span>
-            {missing.map((engine) => (
-              <Button
-                key={engine}
-                disabled={disabled}
-                onClick={() => run("install_model", { engine })}
-              >
-                <Download size={16} />
-                Télécharger {engineName(engine)}
-              </Button>
-            ))}
-          </div>
-        )}
-        <p>
-          La comparaison ignore la casse et la ponctuation. Les divergences
-          invitent à la relecture ; l’accord entre modèles ne garantit pas
-          l’absence d’erreur.
-        </p>
-        {active && (
-          <p role="status">
-            Analyse locale en cours : {active.name}{" "}
-            <Button onClick={() => run("cancel_job", { id: active.id })}>
-              Annuler la vérification
-            </Button>
-          </p>
-        )}
-      </section>
-      {reports.map((job) => (
-        <section className="panel info-panel" key={job.id}>
-          <h3>{job.name}</h3>
-          <p>
-            {engineName(job.engine)} ·{" "}
-            {job.verification
-              ? engineName(job.verification.secondaryEngine)
-              : "Double vérification"}
-          </p>
-          <p>
-            {job.verificationStatus === "processing"
-              ? "Analyse séquentielle en cours…"
-              : job.verificationStatus === "cancelled"
-                ? "Vérification annulée"
-                : job.verificationStatus === "failed"
-                  ? "Vérification incomplète"
-                  : `${number(job.verification?.review.differences.length ?? 0)} passage(s) à relire`}
-          </p>
-          {job.verificationError && <p>{job.verificationError}</p>}
-          {job.verification?.review.approximate && (
-            <p>
-              Comparaison approximative sur un texte volumineux : vérifiez les
-              passages signalés.
-            </p>
-          )}
-          {job.status === "completed" && job.cues.length > 0 && (
-            <Button onClick={() => open(job)}>
-              Ouvrir la relecture
-              <ArrowUpRight size={16} />
-            </Button>
-          )}
-        </section>
-      ))}
-    </>
   );
 }
 function Preferences({
@@ -944,6 +802,9 @@ function Preferences({
 }
 function Editor({
   profile,
+  startInReview,
+  onSecondOpinion,
+  canSecondOpinion,
   job,
   action,
   close,
@@ -953,6 +814,9 @@ function Editor({
   guard: React.MutableRefObject<(() => Promise<boolean>) | null>;
   onMenuContext: (context: EditorMenuContext) => void;
   job: Job;
+  startInReview: boolean;
+  onSecondOpinion: () => void;
+  canSecondOpinion: boolean;
   profile: VocabularyProfile | null;
   action: (command: string, args?: Record<string, unknown>) => Promise<unknown>;
   close: () => void;
@@ -970,7 +834,7 @@ function Editor({
     [missing, setMissing] = useState(false);
   const audio = useRef<HTMLAudioElement>(null),
     textarea = useRef<Map<number, HTMLTextAreaElement>>(new Map());
-  const [reviewMode, setReviewMode] = useState(false);
+  const [reviewMode, setReviewMode] = useState(startInReview);
   const [activeDifference, setActiveDifference] = useState<string | null>(null);
   const [modifyingReview, setModifyingReview] = useState(false);
   const [reviewBusy, setReviewBusy] = useState(!!job.reviewState);
@@ -997,6 +861,12 @@ function Editor({
           reviewState: document.reviewState,
         });
         setSaved(JSON.stringify(document.cues));
+        if (startInReview) {
+          const list = document.reviewState?.differences ?? [];
+          setActiveDifference(
+            list.find(isPendingReview)?.id ?? list[0]?.id ?? null,
+          );
+        }
       })
       .catch((error) => {
         if (mounted) setError(String(error));
@@ -1497,29 +1367,6 @@ function Editor({
             <Combine size={15} />
             Fusionner
           </Button>
-          {!!differences.length && (
-            <Button
-              aria-pressed={reviewMode}
-              onClick={() => {
-                if (reviewMode) {
-                  setReviewMode(false);
-                  setActiveDifference(null);
-                } else
-                  selectReview(
-                    differences.find(isPendingReview)?.id ?? differences[0].id,
-                  );
-              }}
-            >
-              <ScanText size={15} />
-              Relecture
-            </Button>
-          )}
-          {!!differences.length && !reviewMode && (
-            <span className="review-button-count">
-              {number(differences.length)} divergences ·{" "}
-              {number(differences.length - pendingReviews)} traitées
-            </span>
-          )}
           <Button
             aria-expanded={searchOpen}
             onClick={() => {
@@ -1545,6 +1392,36 @@ function Editor({
           >
             <Plus size={15} />
             Ajouter
+          </Button>
+        </div>
+        <div className="button-row editor-review-actions">
+          {(differences.length > 0 || (startInReview && state.reviewState)) && (
+            <Button
+              aria-pressed={reviewMode}
+              onClick={() => {
+                if (reviewMode) {
+                  setReviewMode(false);
+                  setActiveDifference(null);
+                } else if (differences.length)
+                  selectReview(
+                    differences.find(isPendingReview)?.id ?? differences[0].id,
+                  );
+                else setReviewMode(true);
+              }}
+            >
+              <ScanText size={15} />
+              Relecture
+            </Button>
+          )}
+          {!!differences.length && !reviewMode && (
+            <span className="review-button-count">
+              {number(differences.length)} divergences ·{" "}
+              {number(differences.length - pendingReviews)} traitées
+            </span>
+          )}
+          <Button disabled={!canSecondOpinion} onClick={onSecondOpinion}>
+            <ScanText size={15} />
+            Demander un second avis
           </Button>
         </div>
       </div>

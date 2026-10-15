@@ -10,7 +10,10 @@ use std::{
 };
 use tauri::{Manager, State};
 
-use crate::history::{self, default_engine, Job, ReviewDocument, Settings, Store, Verification};
+use crate::history::{
+    self, default_engine, Job, ReviewDocument, Settings, Store, Verification, VerificationProgress,
+    VerificationStage,
+};
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Snapshot {
@@ -62,6 +65,19 @@ impl AppState {
             .ok_or("Transcription inconnue")?;
         f(j);
         self.persist(&s)
+    }
+    fn verification_stage(&self, id: &str, stage: VerificationStage) -> Result<(), String> {
+        let mut guard = self.data.store.lock().map_err(err)?;
+        let mut candidate = guard.clone();
+        candidate
+            .jobs
+            .iter_mut()
+            .find(|job| job.id == id)
+            .ok_or("Transcription inconnue")?
+            .observe_verification(stage)?;
+        self.persist(&candidate)?;
+        *guard = candidate;
+        Ok(())
     }
     fn remove_record(&self, id: &str) -> Result<(), String> {
         let mut s = self.data.store.lock().map_err(err)?;
@@ -321,6 +337,7 @@ fn infer_transcript(
 }
 fn process_verification(state: AppState, job: Job, settings: Settings, secondary: String) {
     let result = (|| {
+        state.verification_stage(&job.id, VerificationStage::Primary)?;
         let primary = infer_transcript(
             &state,
             &job.engine,
@@ -337,8 +354,10 @@ fn process_verification(state: AppState, job: Job, settings: Settings, secondary
             current.dirty = true;
         })?;
         let comparison = (|| {
+            state.verification_stage(&job.id, VerificationStage::Secondary)?;
             let result =
                 infer_transcript(&state, &secondary, &job, &job.language, &settings.subtitles)?;
+            state.verification_stage(&job.id, VerificationStage::Comparison)?;
             let mut review = core::review::compare(&cues, &result.comparison_units).map_err(err)?;
             if let Some(profile) = &job.profile_snapshot {
                 core::vocabulary::rank_review(&mut review, profile);
@@ -456,6 +475,10 @@ fn start_verification(
         job.edit_revision = 0;
         job.verification_error = None;
         job.verification_status = Some("processing".into());
+        job.verification_progress = Some(VerificationProgress::queued(
+            job.created_at,
+            secondary.clone(),
+        ));
         store.jobs.push(job.clone());
         state.persist(&store)?;
         Ok::<_, String>((job, settings))
@@ -641,6 +664,7 @@ async fn import_files(
                     archived: false,
                     review_state: None,
                     edit_revision: 0,
+                    verification_progress: None,
                 });
             }
             let mut s = state.data.store.lock().map_err(err)?;
@@ -1415,7 +1439,7 @@ mod integration_tests {
         assert!(!runtime.busy);
     }
     #[test]
-    #[ignore = "Requires installed Ultra and Whisper Turbo; run from smoke-native.py"]
+    #[ignore = "Requires installed Ultra and Whisper Turbo; run from scripts/smoke-release.py"]
     fn real_double_verification_preserves_primary_and_reverses_engines() {
         let helper = PathBuf::from(std::env::var("ELPO_TEST_HELPER").unwrap());
         let models = PathBuf::from(std::env::var("ELPO_TEST_MODELS").unwrap());
@@ -1453,6 +1477,7 @@ mod integration_tests {
             job.status = "transcribing".into();
             job.cues.clear();
             job.verification_status = Some("processing".into());
+            job.verification_progress = Some(VerificationProgress::queued(now(), secondary.into()));
             state.data.store.lock().unwrap().jobs.push(job.clone());
             state.reserve().unwrap();
             process_verification(
@@ -1472,6 +1497,24 @@ mod integration_tests {
             );
             assert_eq!(result.status, "completed");
             assert_eq!(result.engine, primary);
+            assert_eq!(
+                result.verification_progress.as_ref().unwrap().stage,
+                VerificationStage::Comparison
+            );
+            assert_eq!(
+                result
+                    .verification_progress
+                    .as_ref()
+                    .unwrap()
+                    .secondary_engine,
+                secondary
+            );
+            result
+                .review_state
+                .as_ref()
+                .unwrap()
+                .validate(&result.cues)
+                .unwrap();
             assert!(!result.model_version.as_deref().unwrap().is_empty());
             let review = result.verification.as_ref().unwrap();
             assert_eq!(review.secondary_engine, secondary);
@@ -1590,6 +1633,7 @@ mod integration_tests {
             archived: false,
             review_state: None,
             edit_revision: 0,
+            verification_progress: None,
         };
         let mut settings = Settings::default();
         settings.language = std::env::var("ELPO_TEST_LANGUAGE").unwrap_or_else(|_| "en".into());

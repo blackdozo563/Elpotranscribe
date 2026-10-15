@@ -43,6 +43,8 @@ pub(crate) struct Job {
     pub(crate) review_state: Option<Session>,
     #[serde(default)]
     pub(crate) edit_revision: u64,
+    #[serde(default)]
+    pub(crate) verification_progress: Option<VerificationProgress>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -99,7 +101,53 @@ pub(crate) struct ReviewDocument {
     pub(crate) review_state: Option<Session>,
     pub(crate) revision: u64,
 }
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum VerificationStage {
+    Queued,
+    Primary,
+    Secondary,
+    Comparison,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct VerificationProgress {
+    pub(crate) stage: VerificationStage,
+    /// Unix seconds, as for Job.created_at. Set before the worker starts.
+    pub(crate) started_at: u64,
+    pub(crate) secondary_engine: String,
+}
+impl VerificationProgress {
+    pub(crate) fn queued(started_at: u64, secondary_engine: String) -> Self {
+        Self {
+            stage: VerificationStage::Queued,
+            started_at,
+            secondary_engine,
+        }
+    }
+}
 impl Job {
+    /// Called only at observed worker boundaries, never by a timer or the renderer.
+    pub(crate) fn observe_verification(&mut self, stage: VerificationStage) -> Result<(), String> {
+        if self.verification_status.as_deref() != Some("processing") || self.status == "cancelled" {
+            return Err("Vérification arrêtée.".into());
+        }
+        let progress = self
+            .verification_progress
+            .as_mut()
+            .ok_or("Étape de vérification absente.")?;
+        if !matches!(
+            (progress.stage, stage),
+            (VerificationStage::Queued, VerificationStage::Primary)
+                | (VerificationStage::Primary, VerificationStage::Secondary)
+                | (VerificationStage::Secondary, VerificationStage::Comparison)
+        ) {
+            return Err("Transition de vérification invalide.".into());
+        }
+        progress.stage = stage;
+        Ok(())
+    }
+
     fn migrate(&mut self) -> Result<bool, String> {
         if let Some(session) = &self.review_state {
             return session
@@ -265,6 +313,48 @@ mod tests {
         fs::write(&path, LEGACY).unwrap();
         let store = load(&path).unwrap();
         (dir, path, store)
+    }
+    #[test]
+    fn verification_progress_follows_observed_boundaries_and_never_resurrects_cancelled_work() {
+        let (_dir, _path, mut store) = fixture();
+        let job = &mut store.jobs[0];
+        assert!(job.verification_progress.is_none());
+        job.status = "transcribing".into();
+        job.verification_status = Some("processing".into());
+        assert!(job
+            .observe_verification(VerificationStage::Primary)
+            .is_err());
+        job.verification_progress = Some(VerificationProgress::queued(123, "whisper-turbo".into()));
+        assert!(job
+            .observe_verification(VerificationStage::Comparison)
+            .is_err());
+        for stage in [
+            VerificationStage::Primary,
+            VerificationStage::Secondary,
+            VerificationStage::Comparison,
+        ] {
+            job.observe_verification(stage).unwrap();
+            assert_eq!(job.verification_progress.as_ref().unwrap().stage, stage);
+            assert_eq!(job.verification_progress.as_ref().unwrap().started_at, 123);
+        }
+        assert!(job
+            .observe_verification(VerificationStage::Primary)
+            .is_err());
+        // A valid next transition must still be rejected after cancellation.
+        job.verification_progress = Some(VerificationProgress::queued(123, "whisper-turbo".into()));
+        job.observe_verification(VerificationStage::Primary)
+            .unwrap();
+        job.status = "completed".into(); // primary text can survive cancellation
+        job.verification_status = Some("cancelled".into());
+        let before = serde_json::to_vec(job).unwrap();
+        assert!(job
+            .observe_verification(VerificationStage::Secondary)
+            .is_err());
+        assert_eq!(serde_json::to_vec(job).unwrap(), before);
+        job.verification_status = Some("completed".into());
+        assert!(job
+            .observe_verification(VerificationStage::Secondary)
+            .is_err());
     }
     #[test]
     fn legacy_history_migrates_once_with_exact_backup_and_stable_ids() {
