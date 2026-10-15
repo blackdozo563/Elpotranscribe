@@ -1,5 +1,33 @@
 # Validation réellement effectuée
 
+## Refonte de l’interface — Phase 1 (15 octobre 2026)
+
+Branche `refonte-interface`, base `1ec8c32`. Fichiers de la phase : `docs/UI-AUDIT.md` (écrans/IPC/relecture/raccourcis/styles), `AGENTS.md` (règles Design), `.gitignore` (captures locales), présente section. Aucun fichier applicatif, moteur, temps ou export modifié ; aucune dépendance ajoutée. L’audit inventorie neuf sélecteurs et 130 littéraux de couleur distincts dans le CSS.
+
+Contrôles exécutés dans l’environnement Linux :
+
+| Commande | Résultat |
+|---|---|
+| `npm run build` | TypeScript et production Vite réussis |
+| `npm test` | 11 tests réussis, 3 fichiers |
+| `ELPO_CHROMIUM_EXECUTABLE=/usr/bin/chromium npm run test:browser` | 15 tests réussis ; IPC simulé |
+| `cargo test -p elpo-core --locked` | 28 tests réussis ; 0 échec, 0 ignoré ; aucun doctest présent |
+| `cargo clippy -p elpo-core --locked -- -D warnings` | Réussi |
+
+Captures initiales à 1280 × 800 dans `.ui-captures/phase-01/` : Tableau de bord, Nouvelle transcription, Mes transcriptions, Double vérification, Modèles IA, Paramètres, Vocabulaire, éditeur et recherche. Fixtures IPC uniquement ; aucun écran modifié pendant l’audit. Les captures ne valident pas l’inférence, l’effet de verre ou les dialogues natifs.
+
+Non exécuté ici (Linux) : `swift test --package-path native/swift`. Pour valider les changements natifs des phases suivantes sur Mac ARM64 avec Xcode 26 / Swift 6.2+ :
+
+```sh
+npm ci
+npm run native:build
+swift test --package-path native/swift
+cargo test -p elpotranscribe --locked
+npm run tauri -- build --target aarch64-apple-darwin -- --locked
+```
+
+Cette phase n’est pas une nouvelle version livrable et ne modifie pas la préversion 1.2.0 publiée. Prochaine phase : fenêtre native et menus en français.
+
 ## Préversion 1.2.0 publiée
 
 Source : `56b49eda1e0444e1a86cd3e1eea95be2e14e87f7`, tag `v1.2.0`. [Contrôle natif réussi](https://github.com/blackdozo563/Elpotranscribe/actions/runs/38654475393/job/116161737492), [publication réussie](https://github.com/blackdozo563/Elpotranscribe/actions/runs/38654475393/job/116167765439), [DMG](https://github.com/blackdozo563/Elpotranscribe/releases/download/v1.2.0/ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.2.0.dmg).

@@ -19,3 +19,6 @@ test-results/
 __pycache__/
 *.pyc
 src-tauri/resources/
+
+# Captures locales de la refonte ; IPC simulé, aucune preuve d’inférence.
+.ui-captures/
