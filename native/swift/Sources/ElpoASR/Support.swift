@@ -75,3 +75,12 @@ final class ModelLease {
     }
     deinit { release() }
 }
+
+// Read-only integrity action: no model loading and no network request.
+func verifyInstalledModel(root: URL, engine: String) throws {
+    guard ["ultra", "whisper-turbo"].contains(engine) else { throw Failure(message: "Moteur inconnu") }
+    let marker = root.appendingPathComponent(engine == "ultra" ? "verified.json" : "\(engine).json")
+    let manifest = try JSONDecoder().decode(Manifest.self, from: Data(contentsOf: marker))
+    let directory = try installedDirectory(root: root, engine: engine, manifest: manifest)
+    guard try modelHashes(directory) == manifest.files else { throw Failure(message: "Intégrité du modèle invalide. Réinstallez-le dans Modèles IA.") }
+}

@@ -6,9 +6,9 @@ test("interface française vide et fonctions natives explicitement indiquées", 
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "De l’audio aux mots." }),
+    page.getByRole("heading", { name: "Tableau de bord" }),
   ).toBeVisible();
-  await expect(page.getByText("Une place pour chaque voix.")).toBeVisible();
+  await expect(page.getByText("Aucune transcription")).toBeVisible();
   await page
     .getByRole("button", { name: "Importer des fichiers audio" })
     .click();
@@ -29,7 +29,7 @@ test("seuls Ultra et Whisper Turbo sont proposés", async ({ page }) => {
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Installer Parakeet Ultra" }),
-  ).toBeEnabled();
+  ).toBeDisabled();
   await expect(page.getByRole("button", { name: /^Installer / })).toHaveCount(
     2,
   );
@@ -210,10 +210,24 @@ async function localReviewFixture(page: import("@playwright/test").Page) {
         convertFileSrc: () => "",
         invoke: async (
           command: string,
-          args: { cues?: typeof cues; id?: string },
+          args: {
+            cues?: typeof cues;
+            id?: string;
+            settings?: typeof state.settings;
+          },
         ) => {
           calls.push({ command, args });
           if (command === "snapshot") return state;
+          if (command === "model_disk_usage")
+            return {
+              allocatedBytes: 19300000,
+              logicalBytes: 20000000,
+              files: 2,
+            };
+          if (command === "plugin:menu|new")
+            return [99, "fixture-context-menu"];
+          if (command === "save_settings" && args.settings)
+            state.settings = args.settings;
           if (command === "confirm_action")
             return (
               (window as unknown as { __TEST_CONFIRM__?: boolean })
@@ -737,4 +751,122 @@ test("échelle à 1280 × 800 : boutons sur une ligne et barre d’outils de 52 
         .evaluate((element) => element.getBoundingClientRect().height),
     ).toBe(28);
   }
+});
+
+test("nettoyage global : aucun texte interne, un titre et une mention de confidentialité", async ({
+  page,
+}) => {
+  await localReviewFixture(page);
+  for (const name of [
+    "Tableau de bord",
+    "Nouvelle transcription",
+    "Mes transcriptions",
+    "Double vérification",
+    "Modèles IA",
+    "Paramètres",
+    "Vocabulaire",
+  ]) {
+    await page
+      .getByRole("button", {
+        name: name === "Mes transcriptions" ? /Mes transcriptions/ : name,
+        exact: name !== "Mes transcriptions",
+      })
+      .click();
+    await expect(page.locator("body")).not.toContainText(
+      /à mesurer|TODO|LA CLARTÉ COMMENCE|100 % local|Votre audio reste chez vous|Espace de travail/iu,
+    );
+    await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
+    await expect(
+      page.getByRole("button", { name: "Mode local", exact: true }),
+    ).toHaveCount(1);
+  }
+  await page.getByRole("button", { name: "Mode local", exact: true }).click();
+  await expect(
+    page.getByRole("dialog", { name: "Mode local", exact: true }),
+  ).toContainText("Vérification automatique des versions : désactivée");
+  await expect(
+    page.getByRole("dialog", { name: "Mode local", exact: true }),
+  ).toContainText("Aucune télémétrie");
+  await page.keyboard.press("Escape");
+  await expect(
+    page.getByRole("dialog", { name: "Mode local", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Mode local", exact: true }),
+  ).toBeFocused();
+});
+test("modèles : taille mesurée, choix par défaut et actions natives séparées", async ({
+  page,
+}) => {
+  await localReviewFixture(page);
+  await page.getByRole("button", { name: "Modèles IA", exact: true }).click();
+  const turbo = page.getByRole("region", {
+    name: "Whisper large-v3-turbo Q5_0",
+    exact: true,
+  });
+  await expect(turbo.getByText(/19,3\sMo sur disque/)).toBeVisible();
+  await expect(turbo).not.toContainText(/mémoire|Go à mesurer/iu);
+  await turbo
+    .getByRole("button", { name: "Utiliser par défaut", exact: true })
+    .click();
+  await expect(
+    turbo.getByText("Moteur par défaut", { exact: true }),
+  ).toBeVisible();
+  await turbo
+    .getByRole("button", {
+      name: "Options Whisper large-v3-turbo Q5_0",
+      exact: true,
+    })
+    .click();
+  const options = await page.evaluate(() => {
+    const calls = (
+      window as unknown as {
+        __TEST_CALLS__: Array<{
+          command: string;
+          args: { options?: { items: Array<{ text?: string }> } };
+        }>;
+      }
+    ).__TEST_CALLS__;
+    return calls
+      .find((call) => call.command === "plugin:menu|new")
+      ?.args.options?.items.map((item) => item.text)
+      .filter(Boolean);
+  });
+  expect(options).toEqual(["Vérifier l’intégrité", "Réinstaller", "Supprimer"]);
+  await page.evaluate(() => {
+    const calls = (
+      window as unknown as {
+        __TEST_CALLS__: Array<{
+          command: string;
+          args: {
+            options?: {
+              items: Array<{
+                id?: string;
+                handler?: { onmessage: (id: string) => void };
+              }>;
+            };
+          };
+        }>;
+      }
+    ).__TEST_CALLS__;
+    const item = calls
+      .find((call) => call.command === "plugin:menu|new")
+      ?.args.options?.items.find((item) => item.id === "verify");
+    item?.handler?.onmessage("verify");
+  });
+  await expect(turbo.getByRole("status")).toHaveText("Intégrité vérifiée.");
+  expect(
+    await page.evaluate(
+      () =>
+        (
+          window as unknown as {
+            __TEST_CALLS__: Array<{ command: string; args: unknown }>;
+          }
+        ).__TEST_CALLS__.find((call) => call.command === "verify_model")?.args,
+    ),
+  ).toEqual({ engine: "whisper-turbo" });
+  await turbo.getByText("Détails techniques", { exact: true }).click();
+  await expect(
+    turbo.getByText("Révision installée : previous", { exact: false }),
+  ).toBeVisible();
 });

@@ -1,3 +1,4 @@
+import { number } from "./format";
 import { Button, Select, TextField, TextArea } from "./components/ui";
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import type { VocabularyProfile } from "./domain";
@@ -156,16 +157,6 @@ export default function Vocabulary({
   }, [promptText, installed, busy, counted?.text, failedPrompt, action]);
   return (
     <>
-      <div className="heading">
-        <div>
-          <div className="eyebrow">VOS MOTS, VOS DOMAINES</div>
-          <h1>Vocabulaire</h1>
-          <p>
-            Profils enregistrés uniquement sur ce Mac. Aucun remplacement
-            automatique.
-          </p>
-        </div>
-      </div>
       {error && (
         <div className="alert" role="alert">
           {error}
@@ -186,7 +177,7 @@ export default function Vocabulary({
             >
               <strong>{p.name}</strong>
               <span>
-                {p.language.toUpperCase()} · {p.terms.length} termes
+                {p.language.toUpperCase()} · {number(p.terms.length)} termes
                 {p.builtin ? " · Fourni" : ""}
               </span>
             </Button>
@@ -324,8 +315,8 @@ export default function Vocabulary({
               />
             </label>
             <small role="status">
-              {terms.length} termes · Une entrée par ligne ; doublons et lignes
-              vides ignorés.
+              {number(terms.length)} termes · Une entrée par ligne ; doublons et
+              lignes vides ignorés.
             </small>
             <div className="button-row">
               <TextField
@@ -359,12 +350,12 @@ export default function Vocabulary({
             </p>
             <small role="status">
               {counted?.text === promptText
-                ? `${counted.count} tokens · ${counted.used} transmis · limite ${counted.limit}`
+                ? `${number(counted.count)} tokens · ${number(counted.used)} transmis · limite ${number(counted.limit)}`
                 : installed
                   ? busy
                     ? "Comptage disponible après le traitement en cours."
                     : "Calcul des tokens Whisper…"
-                  : `≤ ${promptBytes} tokens (borne UTF-8 prudente). Installez Whisper Turbo pour le comptage exact.`}{" "}
+                  : `≤ ${number(promptBytes)} tokens (borne UTF-8 prudente). Installez Whisper Turbo pour le comptage exact.`}{" "}
               {countError}
             </small>
             {(counted?.text === promptText

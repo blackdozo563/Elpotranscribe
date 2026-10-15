@@ -1,5 +1,25 @@
 # Validation réellement effectuée
 
+## Refonte de l’interface — Phase 4 (15 octobre 2026)
+
+Nettoyage global et Modèles IA. `src/App.tsx`, `src/Vocabulary.tsx`, `src/style.css` : titre unique dans la barre, suppression des surtitres/accroches/fil d’Ariane et répétitions de confidentialité, logo unique, icônes de navigation distinctes, import avec fichier audio. La pastille Mode local ouvre un popover indiquant le traitement local, l’absence de télémétrie, les usages réseau et le réglage réel de vérification. Les panneaux imbriqués et pastilles sont séparés par les fonds/espacements.
+
+`src/Models.tsx` : deux entrées, statut de version unique et date relative française ; révision complète et date exacte repliées dans Détails techniques. Le choix par défaut utilise la commande de réglages existante. Les actions d’intégrité/réinstallation/suppression sont dans un menu natif. Les tailles inconnues et la mémoire non mesurée sont omises. Les étapes d’installation/intégrité affichées correspondent à une commande réellement en cours, sans pourcentage.
+
+`src/format.ts`, `tests/format.test.ts` : nombres, unités décimales et dates via Intl fr-FR ; test de 19 300 000 octets → 19,3 Mo, séparateur de milliers, aujourd’hui/hier/date ancienne/date absente. Les formats techniques d’horodatage/export restent inchangés.
+
+`src-tauri/src/model_disk.rs`, `src-tauri/src/main.rs`, `src-tauri/src/desktop.rs` : commande de mesure en lecture seule de l’installation active, compatible avec les manifestes anciens et versionnés. Taille logique et blocs réellement alloués du système de fichiers (blocs × 512) distincts ; liens physiques dédupliqués, liens symboliques internes et traversées de chemin refusés. Le chiffre affiché est celui des blocs des fichiers, sans les anciens téléchargements ni les métadonnées de dossiers ; les blocs APFS éventuellement partagés ne sont pas une mesure d’espace exclusivement récupérable.
+
+`native/swift/Sources/ElpoASR/ElpoASR.swift`, `Support.swift` et `Tests/ElpoASRTests/TimingTests.swift` : nouvelle action de métadonnées verify utilisant le calcul SHA-256 existant, sans chargement de moteur ni réseau, sous le verrou existant. Aucun changement du chemin de transcription ni de ses temps. Le test ajouté `InstalledIntegrityTests` couvre les deux moteurs et les poids altérés ; **non exécuté ici sous Linux**, à lancer sur Mac.
+
+Contrôles exécutés : `npm run build` réussi ; `npm test` **16 réussis** ; `npm run test:browser` avec Chromium système **23 réussis**, IPC simulé ; `cargo test -p elpo-core --locked` **28 réussis** ; Clippy du cœur réussi. En plus : `cargo test -p elpotranscribe --locked` **3 tests portables réussis** (benchmark et deux tests de mesure), et Clippy de l’application avec `--all-targets -- -D warnings` réussi. Ces tests de l’application sur Linux ne compilent pas le module desktop macOS.
+
+Les scénarios navigateur interdisent « à mesurer »/« TODO » sur les sept écrans, contrôlent le titre/confidentialité uniques, l’état réel du réglage dans le popover, sa fermeture au clavier, les tailles issues de l’IPC, le choix par défaut, les trois actions du menu et le routage du contrôle d’intégrité. En navigateur sans Tauri, les installations sont désormais grisées : le test exige cet état, sans prétendre qu’un moteur natif y est disponible.
+
+Captures avant/après : neuf écrans dans `.ui-captures/phase-04/`, hors Git ; deux scénarios de capture réussis à 1280 × 800 et écran Modèles IA inspecté visuellement. Elles ne prouvent pas l’inférence, les dialogues ni l’exécution de la nouvelle action Swift.
+
+À vérifier sur Mac : `npm run native:build`, `swift test --package-path native/swift`, `cargo test -p elpotranscribe --locked`, puis compilation Tauri ; mesurer les deux installations réelles, ouvrir les menus natifs, vérifier un modèle puis des poids altérés dans un dossier de test. La préversion 1.2.0 publiée reste inchangée. Prochaine phase : **5 — Bibliothèque unique**.
+
 ## Refonte de l’interface — Phase 3 (15 octobre 2026)
 
 Fondations visuelles implémentées, sans changement du moteur, de la segmentation, des temps, de la comparaison ou du format des exports.

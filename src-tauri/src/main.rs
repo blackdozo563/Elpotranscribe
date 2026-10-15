@@ -3,6 +3,8 @@ mod benchmark;
 mod desktop;
 #[cfg(target_os = "macos")]
 mod menus;
+#[cfg(any(target_os = "macos", test))]
+mod model_disk;
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().is_some_and(|arg| arg == "--bench-local") {

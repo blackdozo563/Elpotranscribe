@@ -22,6 +22,11 @@ let ultraSDKFolderName = Repo.parakeetUltra.folderName
             }
             guard let path = request.models else { throw Failure(message: "Dossier du modèle absent") }
             let root = URL(fileURLWithPath: path, isDirectory: true)
+            if request.action == "verify" {
+                let lease = try ModelLease(root: root); defer { lease.release() }
+                try verifyInstalledModel(root: root, engine: request.engine ?? "ultra")
+                emit(["verified": true]); return
+            }
             if request.action == "check-updates" {
                 let updates = try await checkModelUpdates(root: root)
                 emit(["updates": try JSONSerialization.jsonObject(with: JSONEncoder().encode(updates))]); return

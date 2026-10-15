@@ -1,5 +1,8 @@
+import Models from "./Models";
+import { number, bytes } from "./format";
 import {
   Button,
+  Popover,
   Select,
   TextField,
   TextArea,
@@ -27,9 +30,7 @@ import {
   ScanText,
   Boxes,
   Settings2,
-  ShieldCheck,
   ArrowUpRight,
-  Upload,
   FolderOpen,
   Play,
   Download,
@@ -38,7 +39,8 @@ import {
   LoaderCircle,
   Check,
   FileAudio,
-  ChevronRight,
+  BookOpen,
+  Cpu,
   PanelLeft,
   Save,
   Undo2,
@@ -56,7 +58,6 @@ import {
   type Job,
   type Settings,
   type Snapshot,
-  type ModelUpdate,
   time,
   parseTime,
   change,
@@ -82,7 +83,7 @@ const icons = [
   ScanText,
   Boxes,
   Settings2,
-  ScanText,
+  BookOpen,
 ];
 const localEngines = [
   { id: "ultra", name: "Parakeet Ultra", disabled: false },
@@ -122,6 +123,9 @@ export default function App() {
     [operation, setOperation] = useState<string | null>(null),
     [selected, setSelected] = useState<Job | null>(null);
   const profileGuard = useRef<(() => Promise<boolean>) | null>(null);
+  const [localOpen, setLocalOpen] = useState(false);
+  const localAnchor = useRef<HTMLButtonElement>(null);
+  const closeLocal = useCallback(() => setLocalOpen(false), []);
   const [sidebarHidden, setSidebarHidden] = useState(false);
   const [editorMenu, setEditorMenu] = useState<EditorMenuContext>({
     canUndo: false,
@@ -328,10 +332,8 @@ export default function App() {
           </span>
           <div>
             ELPO<span>TRANSCRIBE</span>
-            <small>VOTRE VOIX, EN TOUTES LETTRES</small>
           </div>
         </div>
-        <p className="nav-label">ESPACE DE TRAVAIL</p>
         <nav>
           {navigation.map((label, i) => {
             const Icon = icons[i];
@@ -346,32 +348,12 @@ export default function App() {
                 <Icon size={18} />
                 {label}
                 {i === 2 && data.jobs.length > 0 && (
-                  <span className="count">{data.jobs.length}</span>
+                  <span className="count">{number(data.jobs.length)}</span>
                 )}
               </Button>
             );
           })}
         </nav>
-        <div className="privacy">
-          <ShieldCheck size={24} />
-          <strong>Votre audio reste chez vous.</strong>
-          <p>
-            Traitement local. Sans compte.
-            <br />
-            Sans abonnement.
-          </p>
-          <span>
-            <i /> CONFIDENTIALITÉ PAR DÉFAUT
-          </span>
-        </div>
-        <div className="version">
-          <span className="tiny-logo">
-            <AudioLines size={16} />
-          </span>
-          <div>
-            ELPOTRANSCRIBE<small>Version 1.2.0 · Préversion</small>
-          </div>
-        </div>
       </aside>
       <main>
         <header className="topbar" data-tauri-drag-region>
@@ -386,13 +368,35 @@ export default function App() {
           >
             <PanelLeft size={17} />
           </Button>
-          <span>
-            Espace de travail <ChevronRight size={14} />{" "}
-            <strong>{navigation[page]}</strong>
-          </span>
-          <span className="local">
-            <i /> Mode local <ShieldCheck size={14} />
-          </span>
+          <h1>{selected ? selected.name : navigation[page]}</h1>
+          <div className="local-control">
+            <Button
+              ref={localAnchor}
+              className="local"
+              aria-expanded={localOpen}
+              onClick={() => setLocalOpen((value) => !value)}
+            >
+              Mode local
+            </Button>
+            <Popover
+              open={localOpen}
+              onClose={closeLocal}
+              anchorRef={localAnchor}
+              label="Mode local"
+            >
+              <p>
+                Les transcriptions sont traitées sur ce Mac. Aucune télémétrie.
+              </p>
+              <p>
+                Les connexions réseau servent aux métadonnées de versions et aux
+                téléchargements demandés.
+              </p>
+              <p>
+                Vérification automatique des versions :{" "}
+                {data.settings.autoModelUpdates ? "activée" : "désactivée"}.
+              </p>
+            </Popover>
+          </div>
         </header>
         <div className="content">
           {error && (
@@ -464,23 +468,6 @@ export default function App() {
             <>
               {(page === 0 || page === 1 || page === 2) && (
                 <>
-                  <div className="heading">
-                    <div>
-                      <div className="eyebrow">LA CLARTÉ COMMENCE ICI</div>
-                      <h1>
-                        {page === 2
-                          ? "Mes transcriptions"
-                          : "De l’audio aux mots."}
-                      </h1>
-                      <p>
-                        Transcription audio intelligente. Précise, privée, entre
-                        vos mains.
-                      </p>
-                    </div>
-                    <div className="pill">
-                      <AudioLines size={16} /> 100 % local après installation
-                    </div>
-                  </div>
                   <div className="stats">
                     <div>
                       <span className="stat-icon violet">
@@ -489,7 +476,7 @@ export default function App() {
                       <section>
                         <small>Fichiers du lot</small>
                         <strong>
-                          {batch.length}
+                          {number(batch.length)}
                           <em> / 10</em>
                         </strong>
                       </section>
@@ -500,7 +487,7 @@ export default function App() {
                       </span>
                       <section>
                         <small>Transcriptions terminées</small>
-                        <strong>{completed}</strong>
+                        <strong>{number(completed)}</strong>
                       </section>
                     </div>
                     <div>
@@ -523,9 +510,9 @@ export default function App() {
                   {page !== 2 && (
                     <section className="import-card">
                       <div className="upload-icon">
-                        <Upload size={27} />
+                        <FileAudio size={27} />
                       </div>
-                      <h2>Votre prochain projet commence ici</h2>
+                      <h2>Importer un audio</h2>
                       <p>
                         Glissez vos fichiers audio dans la fenêtre, ou
                         importez-les depuis votre Mac.
@@ -556,7 +543,7 @@ export default function App() {
                   <section className="panel engine-panel">
                     <div>
                       <span className="section-icon">
-                        <AudioLines size={20} />
+                        <Cpu size={20} />
                       </span>
                       <div>
                         <h3>Moteur de transcription</h3>
@@ -664,11 +651,13 @@ export default function App() {
                       <div>
                         <h2>
                           File de transcription{" "}
-                          <span className="number">{batch.length} / 10</span>
+                          <span className="number">
+                            {number(batch.length)} / 10
+                          </span>
                         </h2>
                         <p>
-                          {completed} terminé{completed > 1 ? "s" : ""} ·{" "}
-                          {failed} erreur{failed > 1 ? "s" : ""}
+                          {number(completed)} terminé{completed > 1 ? "s" : ""}{" "}
+                          · {number(failed)} erreur{failed > 1 ? "s" : ""}
                           {data.busy ? " · Traitement en cours" : ""}
                         </p>
                       </div>
@@ -712,8 +701,7 @@ export default function App() {
                                   <div>
                                     <strong>{j.name}</strong>
                                     <small>
-                                      {(j.size / 1048576).toFixed(1)} Mo ·{" "}
-                                      {j.engine}
+                                      {bytes(j.size)} · {j.engine}
                                       {j.dirty && j.status === "completed"
                                         ? " · SRT à enregistrer"
                                         : ""}
@@ -796,7 +784,7 @@ export default function App() {
                       {!visibleJobs.length && (
                         <div className="empty">
                           <FileAudio size={30} />
-                          <strong>Une place pour chaque voix.</strong>
+                          <strong>Aucune transcription</strong>
                           <span>
                             Importez un audio pour commencer votre première
                             transcription.
@@ -846,182 +834,19 @@ export default function App() {
                       </Button>
                     </div>
                   </section>
-                  <div className="footnote">
-                    <ShieldCheck size={15} />
-                    Votre audio ne quitte jamais votre Mac en mode local.
-                    <span>UTF-8 · Horodatages réels · Aucun quota</span>
-                  </div>
                 </>
               )}
               {page === 4 && (
-                <>
-                  <PageTitle
-                    eyebrow="VOTRE STUDIO, HORS LIGNE"
-                    title="Modèles IA"
-                    text="Installez uniquement ce dont vous avez besoin. Aucun téléchargement automatique."
-                  />
-                  <section className="panel info-panel">
-                    <div className="panel-heading">
-                      <div>
-                        <h3>Versions des modèles</h3>
-                        <p>
-                          Vérification des versions au démarrage et toutes les
-                          six heures si activée. Aucun audio envoyé. Les poids
-                          sont téléchargés uniquement à votre demande.
-                        </p>
-                      </div>
-                      <Button
-                        disabled={!desktop || data.busy || working}
-                        onClick={() => run("check_model_updates")}
-                      >
-                        <RotateCcw size={16} />
-                        Vérifier les mises à jour
-                      </Button>
-                    </div>
-                  </section>
-                  <section className="panel model-card">
-                    <div className="model-top">
-                      <span className="stat-icon violet">
-                        <AudioLines />
-                      </span>
-                      <span className="pill">
-                        RECOMMANDÉ · LANGUES EUROPÉENNES
-                      </span>
-                    </div>
-                    <h2>Parakeet Ultra</h2>
-                    <p>FluidInference · Core ML · Apple Neural Engine</p>
-                    <p>
-                      Français, anglais, espagnol, allemand, italien et
-                      portugais. Pas de prise en charge de l’arabe. Le choix de
-                      langue est un indice de filtrage du SDK, sans garantie de
-                      détection.
-                    </p>
-                    <div className="model-details">
-                      <span>macOS 14+ · ARM64</span>
-                      <span>
-                        Taille et mémoire réelles à mesurer sur Mac 8 Go
-                      </span>
-                      <span>
-                        {data.installedModels?.includes("ultra")
-                          ? "Fichiers installés · intégrité revérifiée avant chaque transcription"
-                          : "Téléchargement explicite via HTTPS depuis Hugging Face"}
-                      </span>
-                    </div>
-                    <div className="button-row">
-                      <Button
-                        className="primary"
-                        disabled={data.busy || working}
-                        onClick={() => run("install_model")}
-                      >
-                        {working || data.busy ? (
-                          <LoaderCircle size={16} className="spin" />
-                        ) : (
-                          <Download size={16} />
-                        )}
-                        {data.installedModels?.includes("ultra")
-                          ? "Vérifier / réinstaller"
-                          : "Installer Parakeet Ultra"}
-                      </Button>
-                      {data.installedModels?.includes("ultra") && (
-                        <Button
-                          disabled={data.busy || working}
-                          onClick={() =>
-                            confirmAndRun(
-                              "Supprimer les fichiers du modèle local ?",
-                              "remove_model",
-                            )
-                          }
-                        >
-                          <Trash2 size={16} />
-                          Supprimer
-                        </Button>
-                      )}
-                    </div>
-                    <ModelUpdateStatus
-                      update={data.modelUpdates?.find(
-                        (update) => update.engine === "ultra",
-                      )}
-                      disabled={data.busy || working}
-                      install={() => run("install_model", { engine: "ultra" })}
-                    />
-                    {working && operation === "install_model" && (
-                      <p role="status">
-                        Téléchargement et initialisation en cours. La durée
-                        dépend de votre connexion ; aucun pourcentage estimé.
-                      </p>
-                    )}
-                  </section>
-                  {[
-                    {
-                      id: "whisper-turbo",
-                      name: "Whisper large-v3-turbo Q5_0",
-                      size: "Taille indiquée par les fichiers téléchargés",
-                      description:
-                        "Option de qualité pour le français et l’anglais US/UK. Quantification Q5 pour limiter la mémoire. Performances M2 8 Go à mesurer.",
-                    },
-                  ].map((model) => (
-                    <section className="panel model-card" key={model.id}>
-                      <h2>{model.name}</h2>
-                      <p>whisper.cpp 1.8.3 · Metal · {model.size}</p>
-                      <p>
-                        {model.description} Français, anglais et arabe.
-                        Traitement local et horodatages calculés par
-                        whisper.cpp.
-                      </p>
-                      <p>
-                        {data.installedModels?.includes(model.id)
-                          ? "Installé · intégrité revérifiée avant chaque transcription"
-                          : "Téléchargement explicite depuis Hugging Face"}
-                      </p>
-                      <div className="button-row">
-                        <Button
-                          className="primary"
-                          disabled={data.busy || working}
-                          onClick={() =>
-                            run("install_model", { engine: model.id })
-                          }
-                        >
-                          <Download size={16} />
-                          {data.installedModels?.includes(model.id)
-                            ? `Réinstaller ${model.name}`
-                            : `Installer ${model.name}`}
-                        </Button>
-                        {data.installedModels?.includes(model.id) && (
-                          <Button
-                            disabled={data.busy || working}
-                            onClick={() =>
-                              confirmAndRun(
-                                `Supprimer ${model.name} du Mac ?`,
-                                "remove_model",
-                                { engine: model.id },
-                              )
-                            }
-                          >
-                            <Trash2 size={16} />
-                            Supprimer
-                          </Button>
-                        )}
-                      </div>
-                      <ModelUpdateStatus
-                        update={data.modelUpdates?.find(
-                          (update) => update.engine === model.id,
-                        )}
-                        disabled={data.busy || working}
-                        install={() =>
-                          run("install_model", { engine: model.id })
-                        }
-                      />
-                    </section>
-                  ))}
-                </>
+                <Models
+                  data={data}
+                  operation={operation}
+                  disabled={!desktop || data.busy || working}
+                  action={action}
+                  onError={setError}
+                />
               )}
               {page === 3 && (
                 <>
-                  <PageTitle
-                    eyebrow="CHAQUE MOT COMPTE"
-                    title="Double vérification"
-                    text="Gardez toujours le dernier mot sur vos transcriptions."
-                  />
                   <VerificationPanel
                     data={data}
                     disabled={!desktop || working || data.busy}
@@ -1042,11 +867,6 @@ export default function App() {
               )}
               {page === 5 && (
                 <>
-                  <PageTitle
-                    eyebrow="À VOTRE FAÇON"
-                    title="Paramètres"
-                    text="Les préférences et l’historique restent sur ce Mac."
-                  />
                   <Preferences
                     settings={data.settings}
                     save={async (settings) => {
@@ -1057,10 +877,6 @@ export default function App() {
                   <section className="panel info-panel">
                     <h3>Application</h3>
                     <p>ELPOTRANSCRIBE 1.2.0 · {data.platform}</p>
-                    <p>
-                      Aucune télémétrie. Transcription entièrement locale. Aucun
-                      audio envoyé à un service cloud.
-                    </p>
                   </section>
                 </>
               )}
@@ -1101,7 +917,7 @@ function VerificationPanel({
   return (
     <>
       <section className="panel preferences">
-        <h2>Deux avis, un résultat sous votre contrôle</h2>
+        <h2>Comparer deux moteurs</h2>
         <p>
           Les deux modèles analysent le même audio l’un après l’autre. Le moteur
           principal fournit le texte et les horodatages de référence. Un nouveau
@@ -1243,7 +1059,7 @@ function VerificationPanel({
                 ? "Vérification annulée"
                 : job.verificationStatus === "failed"
                   ? "Vérification incomplète"
-                  : `${job.verification?.review.differences.length ?? 0} passage(s) à relire`}
+                  : `${number(job.verification?.review.differences.length ?? 0)} passage(s) à relire`}
           </p>
           {job.verificationError && <p>{job.verificationError}</p>}
           {job.verification?.review.approximate && (
@@ -1261,70 +1077,6 @@ function VerificationPanel({
         </section>
       ))}
     </>
-  );
-}
-function PageTitle({
-  eyebrow,
-  title,
-  text,
-}: {
-  eyebrow: string;
-  title: string;
-  text: string;
-}) {
-  return (
-    <div className="heading">
-      <div>
-        <div className="eyebrow">{eyebrow}</div>
-        <h1>{title}</h1>
-        <p>{text}</p>
-      </div>
-    </div>
-  );
-}
-function ModelUpdateStatus({
-  update,
-  disabled,
-  install,
-}: {
-  update: ModelUpdate | undefined;
-  disabled: boolean;
-  install: () => void;
-}) {
-  if (!update) return null;
-  return (
-    <div className="model-details" aria-label="Version du modèle">
-      <span>
-        {update.status === "available"
-          ? "Mise à jour disponible"
-          : update.status === "current"
-            ? "Modèle à jour"
-            : update.status === "unknown"
-              ? "Version installée non identifiée : actualisez le modèle pour activer son suivi."
-              : "Vérification indisponible ; votre modèle local reste utilisable."}
-      </span>
-      {update.installedRevision && (
-        <span title={update.installedRevision}>
-          Version installée :{" "}
-          {update.installedRevision
-            .split(" / ")
-            .map((revision) => revision.slice(0, 12))
-            .join(" / ")}
-        </span>
-      )}
-      <span>
-        Vérifié le {new Date(update.checkedAt).toLocaleString("fr-FR")}
-      </span>
-      {update.error && <span>{update.error}</span>}
-      {["available", "unknown"].includes(update.status) && (
-        <Button className="primary" disabled={disabled} onClick={install}>
-          <Download size={16} />
-          {update.status === "available"
-            ? "Télécharger la mise à jour"
-            : "Actualiser le modèle local"}
-        </Button>
-      )}
-    </div>
   );
 }
 function Preferences({
@@ -1613,7 +1365,7 @@ function Editor({
           <Button className="text-button" onClick={leave}>
             ← Retour à la file
           </Button>
-          <h1>{job.name}</h1>
+
           <p>
             {job.engine} ·{" "}
             {job.modelVersion && (
@@ -1656,9 +1408,9 @@ function Editor({
           <p>
             {engineName(job.engine)} ·{" "}
             {engineName(job.verification.secondaryEngine)} :{" "}
-            {job.verification.review.differences.length} passage(s) signalé(s).
-            Écoutez puis choisissez les corrections. Les temps du moteur
-            principal sont conservés.
+            {number(job.verification.review.differences.length)} passage(s)
+            signalé(s). Écoutez puis choisissez les corrections. Les temps du
+            moteur principal sont conservés.
           </p>
           <div className="button-row review-priority">
             {job.verification.review.differences.slice(0, 20).map((d) => (
@@ -1683,7 +1435,7 @@ function Editor({
       )}
       <section className="panel player">
         <div className="subtitle-preview" dir="auto">
-          {state.present[active]?.text || "Écoutez, relisez, affinez."}
+          {state.present[active]?.text || "Aucun sous-titre à cet instant."}
         </div>
         <audio
           ref={audio}
@@ -1908,7 +1660,7 @@ function Editor({
             </label>
             <span role="status">
               {matches.length
-                ? `${currentMatchIndex + 1} / ${matches.length} occurrences`
+                ? `${number(currentMatchIndex + 1)} / ${number(matches.length)} occurrences`
                 : query
                   ? "Aucune occurrence"
                   : "Saisissez un texte à rechercher"}
@@ -2092,7 +1844,7 @@ function Editor({
       </div>
       <section className="panel export-bar">
         <div>
-          <strong>Vos mots, prêts à partir.</strong>
+          <strong>Exporter</strong>
           <p>Chaque export conserve le nom de l’audio original.</p>
         </div>
         <div className="button-row">

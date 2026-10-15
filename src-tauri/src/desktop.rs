@@ -715,6 +715,32 @@ async fn import_files(
     .map_err(err)?
 }
 #[tauri::command]
+async fn model_disk_usage(
+    state: State<'_, AppState>,
+    engine: String,
+) -> Result<crate::model_disk::DiskUsage, String> {
+    let root = state.models();
+    tauri::async_runtime::spawn_blocking(move || crate::model_disk::measure(&root, &engine))
+        .await
+        .map_err(err)?
+}
+#[tauri::command]
+async fn verify_model(state: State<'_, AppState>, engine: String) -> Result<(), String> {
+    check_engine(&engine)?;
+    let state = state.inner().clone();
+    state.reserve()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = state.helper(
+            serde_json::json!({"action":"verify","models":state.models(),"engine":engine}),
+            None,
+        );
+        state.release();
+        result.map(|_| ())
+    })
+    .await
+    .map_err(err)?
+}
+#[tauri::command]
 async fn install_model(
     state: State<'_, AppState>,
     engine: Option<String>,
@@ -1321,6 +1347,8 @@ pub fn run() {
             confirm_discard,
             confirm_action,
             import_files,
+            model_disk_usage,
+            verify_model,
             install_model,
             remove_model,
             start_batch,

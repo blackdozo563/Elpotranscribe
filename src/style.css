@@ -1551,3 +1551,98 @@ input[type="checkbox"] {
   color: var(--color-attention);
   background: var(--color-attention-doux);
 }
+
+/* Phase 4: page titles and quiet, single-level surfaces. */
+.topbar {
+  gap: 12px;
+  padding: 0 24px;
+}
+.topbar h1 {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.topbar > button {
+  margin-right: 0;
+}
+.local-control {
+  position: relative;
+}
+.local-control .ui-popover {
+  right: 0;
+  top: 38px;
+  width: 340px;
+}
+.local-control .ui-popover p + p {
+  margin-top: 10px;
+}
+.sidebar .brand {
+  padding-bottom: 22px;
+}
+.panel,
+.stats > div {
+  border: none;
+}
+.panel .panel {
+  background: var(--color-transparent);
+  border: none;
+}
+.pill,
+.number,
+.status,
+.status.completed,
+.status.failed {
+  border: none;
+}
+.models {
+  max-width: 920px;
+}
+.model-version-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.model-version-row strong {
+  white-space: nowrap;
+}
+.model-entry {
+  padding: 20px 0;
+  border-bottom: 1px solid var(--color-separateur);
+}
+.model-entry-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+.model-entry p {
+  margin: 5px 0;
+  font-size: 12px;
+}
+.model-entry h2 {
+  font-size: 15px;
+}
+.model-entry details {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--color-texte-secondaire);
+  overflow-wrap: anywhere;
+}
+.model-entry summary {
+  cursor: default;
+}
+.model-current {
+  color: var(--color-succes);
+}
+.default-engine {
+  font-size: 12px;
+  color: var(--color-texte-secondaire);
+}
+.selectable {
+  user-select: text;
+}

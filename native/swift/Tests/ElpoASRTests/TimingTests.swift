@@ -160,3 +160,22 @@ final class ModelLeaseTests: XCTestCase {
         next.release()
     }
 }
+
+final class InstalledIntegrityTests: XCTestCase {
+    func testReadOnlyIntegrityBothEnginesDetectsModifiedWeights() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        for engine in ["ultra", "whisper-turbo"] {
+            let directory = root.appendingPathComponent(engine == "ultra" ? "parakeet-ultra" : engine)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let weights = directory.appendingPathComponent("weights.bin")
+            try Data("weights".utf8).write(to: weights)
+            let manifest = Manifest(sdk: "fixture", files: try modelHashes(directory))
+            try JSONEncoder().encode(manifest).write(to: root.appendingPathComponent(engine == "ultra" ? "verified.json" : "\(engine).json"))
+            XCTAssertNoThrow(try verifyInstalledModel(root: root, engine: engine))
+            try Data("modified".utf8).write(to: weights)
+            XCTAssertThrowsError(try verifyInstalledModel(root: root, engine: engine))
+        }
+        XCTAssertThrowsError(try verifyInstalledModel(root: root, engine: "unknown"))
+    }
+}
