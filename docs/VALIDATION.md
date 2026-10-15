@@ -1,5 +1,30 @@
 # Validation réellement effectuée
 
+## Refonte de l’interface — Phase 7 (15 octobre 2026)
+
+Mode Relecture intégré à l’éditeur, sans changement d’inférence, de segmentation, d’horodatages, de format d’export ni de dépendances.
+
+- `src/App.tsx` : initialisation depuis le document enregistré via `list_review`, bouton et compteur Relecture, branchement des décisions et de la pile commune sur `resolve_review`/`restore_review`, enregistrement immédiat et protection pendant les écritures. Une révision de bibliothèque périmée ne remplace pas le document courant. Les raccourcis et commandes d’annulation de relecture ne modifient pas le document pendant la saisie d’une proposition. La recherche existante repasse au mode d’édition du texte ; l’ancienne application d’une proposition au sous-titre entier est retirée.
+- `src/Review.tsx` : plages exactes soulignées, marque des décisions traitées, gouttière mesurée sur les éléments réels, proposition ancrée avec moteur principal et second avis, Garder/Accepter/Modifier/Écouter, fermeture au clic extérieur et bouton dédié. Une plage périmée impose une sélection explicite dans le texte actuel ; les flèches avec Majuscule permettent de sélectionner des graphèmes complets dans le champ en lecture seule, y compris sous Chromium. Les propositions ambiguës ne sont pas applicables automatiquement.
+- `src/reviewNavigation.ts` : navigation cyclique, prochaine divergence non traitée, découpage exact du texte et sélection Unicode au clavier. Le rendu ignore les plages périmées et ne recherche pas un mot ressemblant pour les reconstituer.
+- `src/style.css` : états ambre/vert, sélection, panneau flottant dans la fenêtre, fondu et transition de 250 ms, suppression des animations sous `prefers-reduced-motion`. Pas de couleur littérale ajoutée.
+
+| Commande | Résultat |
+|---|---|
+| `npm run build` | TypeScript et Vite réussis |
+| `npm test` | 27 tests réussis, 9 fichiers ; 4 tests de navigation/rendu/sélection ajoutés |
+| `ELPO_CHROMIUM_EXECUTABLE=/usr/bin/chromium npm run test:browser` | 31 tests réussis, IPC simulé ; 5 nouveaux scénarios et remplacement du test de l’ancienne proposition |
+| `cargo test -p elpo-core --locked` | 35 tests réussis |
+| `cargo test -p elpotranscribe --locked` | 8 tests portables réussis ; desktop macOS exclu |
+| `cargo clippy -p elpo-core --locked -- -D warnings` | Réussi |
+| `cargo fmt --all --check` | Réussi |
+
+Les scénarios navigateur couvrent Tab/⇧Tab, Entrée, Échap, M, saisie manuelle, conservation des temps, annulation/rétablissement et reprise après rechargement. Ils couvrent aussi une sélection périmée réellement choisie au clavier, le retour à l’état avant édition manuelle, les échecs d’enregistrement et d’annulation sans faux changement visuel, la gouttière alignée, la demande de lecture à `startMs − 1 000` bornée à zéro, la suspension des raccourcis pendant la saisie (y compris l’événement de menu simulé), le mouvement réduit et une bibliothèque dont la révision est en retard. Le lecteur est simulé dans cette fixture ; cela ne prouve pas un décodage ni une lecture audio native.
+
+Captures : état avant et cinq états après dans `.ui-captures/phase-07/`, hors Git, à 1280 × 800. Deux scénarios de capture après réussis ; vues Relecture, plage périmée et Relecture terminée inspectées. Elles ne prouvent ni inférence ni menus ou VoiceOver natifs. Le lecteur existant, les rôles/libellés et l’annonce `aria-live` sont présents ; l’usage réel avec VoiceOver reste à vérifier sur Mac.
+
+À vérifier sur macOS ARM64 : `npm run native:build`, `swift test --package-path native/swift`, `cargo test -p elpotranscribe --locked`, puis `npm run tauri -- build --target aarch64-apple-darwin -- --locked`. Tester dans WKWebView les raccourcis/menu, la sélection manuelle, les graphèmes, l’écoute, la fermeture/reprise et les exports avec un historique réel. Aucun de ces contrôles natifs ni essai M2 8 Go de cette branche n’a été exécuté ici. Aucun nouveau DMG publié. Prochaine phase : **8 — Intégrer le second avis au parcours**.
+
 ## Refonte de l’interface — Phase 6 (15 octobre 2026)
 
 Données de relecture ajoutées, sans changement visuel, moteur, horodatage ou format d’export. Aucune dépendance ajoutée.

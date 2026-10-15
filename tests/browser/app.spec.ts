@@ -1,3 +1,4 @@
+import { reviewFixture } from "./reviewFixture";
 import { test, expect } from "@playwright/test";
 test("interface française vide et fonctions natives explicitement indiquées", async ({
   page,
@@ -286,29 +287,29 @@ test("double vérification : inversion puis envoi des moteurs choisis", async ({
     });
 });
 
-test("suggestion : validation explicite, mêmes temps et annulation", async ({
+test("relecture : acceptation explicite et annulation conservent les temps", async ({
   page,
 }) => {
-  await localReviewFixture(page);
+  await reviewFixture(page);
   await page.getByRole("button", { name: "Ouvrir", exact: true }).click();
-  const text = page.getByRole("textbox", { name: "Sous-titre 1", exact: true });
-  await expect(text).toHaveValue("Je vais sortir ce foir.");
-  const start = await page.getByLabel("Début 1", { exact: true }).inputValue();
+  const before = await page.getByLabel("Début 1", { exact: true }).inputValue();
   const end = await page.getByLabel("Fin 1", { exact: true }).inputValue();
+  await page.getByRole("button", { name: "Relecture", exact: true }).click();
   await page
-    .getByRole("button", { name: "Utiliser cette proposition" })
+    .getByRole("button", {
+      name: "Accepter la lecture du second avis (Entrée)",
+      exact: true,
+    })
     .click();
-  await expect(text).toHaveValue("Je vais sortir ce soir.");
-  await expect(page.getByLabel("Début 1", { exact: true })).toHaveValue(start);
+  await expect(page.locator(".review-text").first()).toHaveText(
+    "Je sors ce soir.",
+  );
+  await expect(page.getByLabel("Début 1", { exact: true })).toHaveValue(before);
   await expect(page.getByLabel("Fin 1", { exact: true })).toHaveValue(end);
-  await expect(
-    page.getByRole("button", { name: "Utiliser cette proposition" }),
-  ).toBeDisabled();
   await page.getByRole("button", { name: "Annuler", exact: true }).click();
-  await expect(text).toHaveValue("Je vais sortir ce foir.");
-  await expect(
-    page.getByRole("button", { name: "Utiliser cette proposition" }),
-  ).toBeEnabled();
+  await expect(page.locator(".review-text").first()).toHaveText(
+    "Je sors ce foir.",
+  );
 });
 
 test("mise à jour : notification et téléchargement explicite du bon modèle", async ({
@@ -1039,9 +1040,7 @@ test("bibliothèque : second avis sur la bonne source, export et voile de dépô
     const native = (
       window as unknown as {
         __TAURI_INTERNALS__: {
-          invoke: (
-            command: string,
-          ) => Promise<{
+          invoke: (command: string) => Promise<{
             jobs: Array<{ id: string; name: string; archived?: boolean }>;
           }>;
         };

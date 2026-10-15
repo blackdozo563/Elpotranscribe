@@ -1,3 +1,11 @@
+import { ReviewText, ReviewPopover, ReviewGutter } from "./Review";
+import {
+  adjacentReview,
+  nextPendingReview,
+  isPendingReview,
+} from "./reviewNavigation";
+import { listReview, restoreReview, resolveReview } from "./reviewClient";
+import type { ReviewDecision } from "./review";
 import Library from "./Library";
 import Models from "./Models";
 import { number } from "./format";
@@ -60,6 +68,7 @@ import {
   time,
   parseTime,
   change,
+  changeReviewed,
   undo,
   redo,
   split,
@@ -952,6 +961,7 @@ function Editor({
       past: [],
       present: job.cues,
       future: [],
+      reviewState: job.reviewState ?? null,
     }),
     [saved, setSaved] = useState(JSON.stringify(job.cues)),
     [position, setPosition] = useState(0),
@@ -960,6 +970,73 @@ function Editor({
     [missing, setMissing] = useState(false);
   const audio = useRef<HTMLAudioElement>(null),
     textarea = useRef<Map<number, HTMLTextAreaElement>>(new Map());
+  const [reviewMode, setReviewMode] = useState(false);
+  const [activeDifference, setActiveDifference] = useState<string | null>(null);
+  const [modifyingReview, setModifyingReview] = useState(false);
+  const [reviewBusy, setReviewBusy] = useState(!!job.reviewState);
+  const [reviewAnchor, setReviewAnchor] = useState<HTMLButtonElement | null>(
+    null,
+  );
+  const reviewButtons = useRef(new Map<string, HTMLButtonElement>());
+  const reviewWorkspace = useRef<HTMLDivElement>(null);
+  const revision = useRef(job.editRevision ?? 0);
+  const editing = useRef(state);
+  editing.current = state;
+  const busyReview = useRef(!!job.reviewState);
+  useEffect(() => {
+    if (!job.reviewState) return;
+    let mounted = true;
+    void listReview(job.id)
+      .then((document) => {
+        if (!mounted) return;
+        revision.current = document.revision;
+        setState({
+          past: [],
+          present: document.cues,
+          future: [],
+          reviewState: document.reviewState,
+        });
+        setSaved(JSON.stringify(document.cues));
+      })
+      .catch((error) => {
+        if (mounted) setError(String(error));
+      })
+      .finally(() => {
+        if (mounted) {
+          busyReview.current = false;
+          setReviewBusy(false);
+        }
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [job.id]);
+  const differences = state.reviewState?.differences ?? [];
+  const pendingReviews = differences.filter(isPendingReview).length;
+  const activeReview =
+    differences.find((d) => d.id === activeDifference) ?? null;
+  const selectReview = (id: string) => {
+    setReviewMode(true);
+    setSearchOpen(false);
+    setActiveDifference(id);
+    setModifyingReview(false);
+  };
+  useEffect(() => {
+    if (!reviewMode || !activeDifference) {
+      setReviewAnchor(null);
+      return;
+    }
+    if (reviewBusy) return;
+    const anchor = reviewButtons.current.get(activeDifference) ?? null;
+    setReviewAnchor(anchor);
+    anchor?.scrollIntoView({
+      block: "center",
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
+    });
+    anchor?.focus({ preventScroll: true });
+  }, [reviewMode, activeDifference, reviewBusy]);
   const [selectedWord, setSelectedWord] = useState("");
   const profileKey = JSON.stringify(profile);
   const vocabularyMatches = useMemo(
@@ -1004,24 +1081,9 @@ function Editor({
   useEffect(() => {
     if (searchOpen) searchInput.current?.focus();
   }, [searchOpen]);
-  useEffect(() => {
-    const shortcut = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
-        event.preventDefault();
-        setSearchOpen(true);
-        searchInput.current?.focus();
-      } else if (
-        (event.metaKey || event.ctrlKey) &&
-        event.key.toLowerCase() === "z"
-      ) {
-        event.preventDefault();
-        setState(event.shiftKey ? redo : undo);
-      } else if (event.key === "Escape") setSearchOpen(false);
-    };
-    window.addEventListener("keydown", shortcut);
-    return () => window.removeEventListener("keydown", shortcut);
-  }, []);
-  const update = (cues: Cue[]) => setState((s) => change(s, cues));
+  const update = (cues: Cue[]) => {
+    if (!busyReview.current) setState((s) => change(s, cues));
+  };
   const attempt = (fn: () => void) => {
     try {
       fn();
@@ -1030,11 +1092,181 @@ function Editor({
       setError(String(e));
     }
   };
-  const save = async () => {
-    validate(state.present);
-    await action("save_edit", { id: job.id, cues: state.present });
-    setSaved(JSON.stringify(state.present));
+  const persistReviewFrame = async (frame: EditState) => {
+    const document = await restoreReview(
+      job.id,
+      frame.present,
+      frame.reviewState ?? null,
+      revision.current,
+    );
+    revision.current = document.revision;
+    setSaved(JSON.stringify(document.cues));
+    return document;
   };
+  const reviewOperation = async (operation: () => Promise<void>) => {
+    if (busyReview.current) return;
+    busyReview.current = true;
+    setReviewBusy(true);
+    setError("");
+    try {
+      await operation();
+    } catch (error) {
+      setError(String(error));
+    } finally {
+      busyReview.current = false;
+      setReviewBusy(false);
+    }
+  };
+  const historyEdit = (direction: "undo" | "redo") => {
+    if (busyReview.current) return;
+    const base = editing.current;
+    const frame = direction === "undo" ? undo(base) : redo(base);
+    if (frame === base) return;
+    if (!base.reviewState) {
+      setState(frame);
+      return;
+    }
+    void reviewOperation(async () => {
+      await persistReviewFrame(frame);
+      setState(frame);
+      setModifyingReview(false);
+    });
+  };
+  const decideReview = (decision: ReviewDecision) => {
+    if (!activeDifference) return;
+    const id = activeDifference;
+    void reviewOperation(async () => {
+      const base = editing.current;
+      // Flush manual edits first. A stale range must be rejected by Rust, never guessed.
+      await persistReviewFrame(base);
+      const document = await resolveReview(
+        job.id,
+        id,
+        decision,
+        revision.current,
+      );
+      revision.current = document.revision;
+      setState(changeReviewed(base, document.cues, document.reviewState));
+      setSaved(JSON.stringify(document.cues));
+      setModifyingReview(false);
+      const next = nextPendingReview(
+        document.reviewState?.differences ?? [],
+        id,
+      );
+      setActiveDifference(next ?? id);
+    });
+  };
+  const listenReview = () => {
+    const cue = activeReview && state.present[activeReview.cueIndex];
+    if (audio.current && cue) {
+      audio.current.currentTime = Math.max(0, cue.startMs - 1000) / 1000;
+      void audio.current.play().catch((error) => setError(String(error)));
+    }
+  };
+  const save = async () => {
+    if (busyReview.current)
+      throw new Error("Attendez la fin de l’enregistrement.");
+    const frame = editing.current;
+    validate(frame.present);
+    busyReview.current = true;
+    setReviewBusy(true);
+    try {
+      if (frame.reviewState) await persistReviewFrame(frame);
+      else {
+        await action("save_edit", { id: job.id, cues: frame.present });
+        setSaved(JSON.stringify(frame.present));
+      }
+    } finally {
+      busyReview.current = false;
+      setReviewBusy(false);
+    }
+  };
+  useEffect(() => {
+    const shortcut = (event: KeyboardEvent) => {
+      // Text still being entered in the proposal has its own native undo history.
+      if (
+        modifyingReview &&
+        (event.target as Element).closest(
+          ".review-popover input, .review-popover textarea, .review-popover select",
+        ) &&
+        (event.metaKey || event.ctrlKey) &&
+        event.key.toLowerCase() === "z"
+      )
+        return;
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        setReviewMode(false);
+        setActiveDifference(null);
+        setSearchOpen(true);
+        searchInput.current?.focus();
+      } else if (
+        (event.metaKey || event.ctrlKey) &&
+        event.key.toLowerCase() === "z"
+      ) {
+        event.preventDefault();
+        historyEdit(event.shiftKey ? "redo" : "undo");
+      } else if (
+        reviewMode &&
+        activeReview &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey
+      ) {
+        const target = event.target as HTMLElement;
+        if (
+          !target.closest(".review-workspace, .review-popover, .review-toolbar")
+        )
+          return;
+        if (target.closest("input, textarea, select, [contenteditable=true]"))
+          return;
+        if (busyReview.current) {
+          event.preventDefault();
+          return;
+        }
+        if (
+          (event.key === "Enter" || event.key === " ") &&
+          target.closest(".review-popover button")
+        )
+          return;
+        if (modifyingReview) {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            setModifyingReview(false);
+            reviewAnchor?.focus();
+          }
+          return;
+        }
+        if (event.key === "Tab") {
+          event.preventDefault();
+          const next = adjacentReview(
+            differences,
+            activeDifference,
+            event.shiftKey ? -1 : 1,
+          );
+          if (next) selectReview(next);
+        } else if (event.key === "Enter") {
+          event.preventDefault();
+          if (activeReview.range && activeReview.source.secondaryText !== null)
+            decideReview({ kind: "accept" });
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          if (activeReview.range) decideReview({ kind: "keep" });
+          else {
+            setActiveDifference(null);
+            reviewAnchor?.focus();
+          }
+        } else if (event.key.toLowerCase() === "m") {
+          event.preventDefault();
+          setModifyingReview(true);
+        } else if (event.key === " ") {
+          event.preventDefault();
+          listenReview();
+        }
+      } else if (event.key === "Escape") setSearchOpen(false);
+    };
+    window.addEventListener("keydown", shortcut);
+    return () => window.removeEventListener("keydown", shortcut);
+  });
   const exportFile = async (format: string, original: boolean) => {
     try {
       await save();
@@ -1051,10 +1283,11 @@ function Editor({
   };
   useEffect(() => {
     const mayLeave = async () =>
-      !dirty ||
-      (await action("confirm_action", {
-        message: "Quitter sans enregistrer vos modifications ?",
-      })) === true;
+      !busyReview.current &&
+      (!dirty ||
+        (await action("confirm_action", {
+          message: "Quitter sans enregistrer vos modifications ?",
+        })) === true);
     guard.current = mayLeave;
     return () => {
       if (guard.current === mayLeave) guard.current = null;
@@ -1073,17 +1306,33 @@ function Editor({
   }
   useEffect(() => {
     onMenuContext({
-      canUndo: !!state.past.length,
-      canRedo: !!state.future.length,
-      canExport: exportable,
+      canUndo: !reviewBusy && !!state.past.length,
+      canRedo: !reviewBusy && !!state.future.length,
+      canExport: !reviewBusy && exportable,
     });
-  }, [state.past.length, state.future.length, exportable, onMenuContext]);
+  }, [
+    state.past.length,
+    state.future.length,
+    exportable,
+    reviewBusy,
+    onMenuContext,
+  ]);
   useEffect(() => {
     const handler = (event: Event) => {
       const command = (event as CustomEvent<MenuAction>).detail;
-      if (command === "undo") setState(undo);
-      if (command === "redo") setState(redo);
+      if (
+        (command === "undo" || command === "redo") &&
+        modifyingReview &&
+        document.activeElement?.closest(
+          ".review-popover input, .review-popover textarea, .review-popover select",
+        )
+      )
+        return;
+      if (command === "undo") historyEdit("undo");
+      if (command === "redo") historyEdit("redo");
       if (command === "find") {
+        setReviewMode(false);
+        setActiveDifference(null);
         setSearchOpen(true);
         searchInput.current?.focus();
       }
@@ -1094,7 +1343,7 @@ function Editor({
   });
   useEffect(() => {
     const before = (event: BeforeUnloadEvent) => {
-      if (dirty) {
+      if (dirty || busyReview.current) {
         event.preventDefault();
         event.returnValue = "";
       }
@@ -1106,7 +1355,11 @@ function Editor({
     (c) => c.startMs <= position && c.endMs > position,
   );
   return (
-    <>
+    <fieldset
+      className="editor-scope"
+      disabled={reviewBusy}
+      aria-busy={reviewBusy}
+    >
       <div className="editor-heading">
         <div>
           <Button className="text-button" onClick={leave}>
@@ -1148,37 +1401,6 @@ function Editor({
         <div className="panel info-panel" role="status">
           Second avis : {job.verification.secondaryTimingNote}
         </div>
-      )}
-      {job.verification && (
-        <section className="panel info-panel">
-          <h3>Double vérification locale</h3>
-          <p>
-            {engineName(job.engine)} ·{" "}
-            {engineName(job.verification.secondaryEngine)} :{" "}
-            {number(job.verification.review.differences.length)} passage(s)
-            signalé(s). Écoutez puis choisissez les corrections. Les temps du
-            moteur principal sont conservés.
-          </p>
-          <div className="button-row review-priority">
-            {job.verification.review.differences.slice(0, 20).map((d) => (
-              <Button
-                key={d.cueIndex}
-                onClick={() => {
-                  setSelectedCue(d.cueIndex);
-                  textarea.current
-                    .get(d.cueIndex)
-                    ?.scrollIntoView({ block: "center" });
-                }}
-              >
-                {d.profileTerm ? "Terme du profil · " : "À relire · "}Sous-titre{" "}
-                {d.cueIndex + 1}
-              </Button>
-            ))}
-          </div>
-          {job.verification.review.approximate && (
-            <p>Comparaison approximative ; relisez les passages signalés.</p>
-          )}
-        </section>
       )}
       <section className="panel player">
         <div className="subtitle-preview" dir="auto">
@@ -1238,14 +1460,14 @@ function Editor({
         <div className="button-row">
           <Button
             disabled={!state.past.length}
-            onClick={() => setState(undo(state))}
+            onClick={() => historyEdit("undo")}
           >
             <Undo2 size={15} />
             Annuler
           </Button>
           <Button
             disabled={!state.future.length}
-            onClick={() => setState(redo(state))}
+            onClick={() => historyEdit("redo")}
           >
             <Redo2 size={15} />
             Rétablir
@@ -1275,9 +1497,36 @@ function Editor({
             <Combine size={15} />
             Fusionner
           </Button>
+          {!!differences.length && (
+            <Button
+              aria-pressed={reviewMode}
+              onClick={() => {
+                if (reviewMode) {
+                  setReviewMode(false);
+                  setActiveDifference(null);
+                } else
+                  selectReview(
+                    differences.find(isPendingReview)?.id ?? differences[0].id,
+                  );
+              }}
+            >
+              <ScanText size={15} />
+              Relecture
+            </Button>
+          )}
+          {!!differences.length && !reviewMode && (
+            <span className="review-button-count">
+              {number(differences.length)} divergences ·{" "}
+              {number(differences.length - pendingReviews)} traitées
+            </span>
+          )}
           <Button
             aria-expanded={searchOpen}
-            onClick={() => setSearchOpen(!searchOpen)}
+            onClick={() => {
+              setReviewMode(false);
+              setActiveDifference(null);
+              setSearchOpen(!searchOpen);
+            }}
           >
             Rechercher / Remplacer
           </Button>
@@ -1419,176 +1668,209 @@ function Editor({
           </small>
         </section>
       )}
-      <div className="cue-list">
-        {state.present.map((cue, i) => (
-          <section
-            key={i}
-            className={`cue panel ${active === i ? "playing" : ""} ${selectedCue === i ? "selected" : ""}`}
-            onFocus={() => setSelectedCue(i)}
-          >
-            <Button
-              className="cue-number"
-              title="Écouter ce passage"
-              onClick={() => {
-                if (audio.current) {
-                  audio.current.currentTime = cue.startMs / 1000;
-                  void audio.current.play().catch((e) => setError(String(e)));
-                }
-                setSelectedCue(i);
-              }}
+      {reviewMode && (
+        <div className="review-toolbar">
+          <span>
+            {number(differences.length)} divergences ·{" "}
+            {number(differences.length - pendingReviews)} traitées
+          </span>
+          {pendingReviews === 0 && (
+            <span className="review-complete" role="status">
+              Relecture terminée{" "}
+              <Button
+                disabled={!exportable}
+                onClick={() => void exportFile("srt", false)}
+              >
+                Exporter
+              </Button>
+            </span>
+          )}
+          <small>
+            L’accord entre moteurs ne garantit pas l’absence d’erreur.
+          </small>
+          {job.verification?.review.approximate && (
+            <small>Comparaison approximative : vérifiez à l’écoute.</small>
+          )}
+        </div>
+      )}
+      <div
+        className={`review-workspace ${reviewMode ? "is-reviewing" : ""}`}
+        ref={reviewWorkspace}
+      >
+        {reviewMode &&
+          differences
+            .filter((d) => d.cueIndex >= state.present.length)
+            .map((d) => (
+              <Button
+                key={d.id}
+                ref={(el) => {
+                  if (el) reviewButtons.current.set(d.id, el);
+                  else reviewButtons.current.delete(d.id);
+                }}
+                className="review-orphan"
+                onClick={() => selectReview(d.id)}
+              >
+                Divergence à replacer dans un segment
+              </Button>
+            ))}
+        <div className="cue-list">
+          {state.present.map((cue, i) => (
+            <section
+              key={i}
+              className={`cue panel ${active === i ? "playing" : ""} ${selectedCue === i ? "selected" : ""}`}
+              onFocus={() => setSelectedCue(i)}
             >
-              {String(i + 1).padStart(2, "0")}
-              <Play size={12} />
-            </Button>
-            <div className="cue-timing">
-              <TimeInput
-                label={`Début ${i + 1}`}
-                value={cue.startMs}
-                onChange={(value) =>
-                  update(
-                    state.present.map((c, n) =>
-                      n === i ? { ...c, startMs: value } : c,
-                    ),
-                  )
-                }
-              />
-              <TimeInput
-                label={`Fin ${i + 1}`}
-                value={cue.endMs}
-                onChange={(value) =>
-                  update(
-                    state.present.map((c, n) =>
-                      n === i ? { ...c, endMs: value } : c,
-                    ),
-                  )
-                }
-              />
-            </div>
-            <TextArea
-              ref={(el) => {
-                if (el) textarea.current.set(i, el);
-                else textarea.current.delete(i);
-              }}
-              aria-label={`Sous-titre ${i + 1}`}
-              data-review={
-                job.verification?.review.differences.some(
-                  (difference) =>
-                    difference.cueIndex === i &&
-                    difference.primaryText === cue.text,
-                )
-                  ? "difference"
-                  : undefined
-              }
-              dir="auto"
-              onSelect={(e) =>
-                setSelectedWord(
-                  e.currentTarget.value
-                    .slice(
-                      e.currentTarget.selectionStart,
-                      e.currentTarget.selectionEnd,
+              <Button
+                className="cue-number"
+                title="Écouter ce passage"
+                onClick={() => {
+                  if (audio.current) {
+                    audio.current.currentTime = cue.startMs / 1000;
+                    void audio.current.play().catch((e) => setError(String(e)));
+                  }
+                  setSelectedCue(i);
+                }}
+              >
+                {String(i + 1).padStart(2, "0")}
+                <Play size={12} />
+              </Button>
+              <div className="cue-timing">
+                <TimeInput
+                  label={`Début ${i + 1}`}
+                  value={cue.startMs}
+                  onChange={(value) =>
+                    update(
+                      state.present.map((c, n) =>
+                        n === i ? { ...c, startMs: value } : c,
+                      ),
                     )
-                    .trim(),
-                )
-              }
-              value={cue.text}
-              onChange={(e) =>
-                update(
-                  state.present.map((c, n) =>
-                    n === i ? { ...c, text: e.target.value } : c,
-                  ),
-                )
-              }
-            />
-            {!!vocabularyMatches[i]?.length && (
-              <div className="profile-near-misses">
-                <strong>Vocabulaire · à relire</strong>
-                {vocabularyMatches[i].map((match) => (
-                  <div key={`${match.start}-${match.term}`}>
-                    <mark>{match.original}</mark> →{" "}
-                    <Button
-                      onClick={() =>
-                        update(
-                          state.present.map((c, n) =>
-                            n === i
-                              ? {
-                                  ...c,
-                                  text:
-                                    c.text.slice(0, match.start) +
-                                    match.term +
-                                    c.text.slice(match.end),
-                                }
-                              : c,
-                          ),
-                        )
-                      }
-                    >
-                      Remplacer par {match.term}
-                    </Button>
-                  </div>
-                ))}
+                  }
+                />
+                <TimeInput
+                  label={`Fin ${i + 1}`}
+                  value={cue.endMs}
+                  onChange={(value) =>
+                    update(
+                      state.present.map((c, n) =>
+                        n === i ? { ...c, endMs: value } : c,
+                      ),
+                    )
+                  }
+                />
               </div>
-            )}
-            {job.verification?.review.differences
-              .filter((difference) => difference.cueIndex === i)
-              .map((difference) => {
-                const reference = job.verification!.referenceCues[i];
-                const unchanged =
-                  reference &&
-                  cue.text === difference.primaryText &&
-                  cue.startMs === reference.startMs &&
-                  cue.endMs === reference.endMs;
-                return (
-                  <div className="review-difference" key={i}>
-                    <strong>
-                      {unchanged
-                        ? difference.profileTerm
-                          ? "À relire · terme du profil"
-                          : "À relire · divergence entre modèles"
-                        : "Passage corrigé ou modifié"}
-                    </strong>
-                    <p>
-                      Second avis :{" "}
-                      {difference.candidateText ??
-                        difference.alternativeText ??
-                        "Passage absent du second résultat"}
-                    </p>
-                    {difference.candidateText && (
+              {reviewMode ? (
+                <ReviewText
+                  text={cue.text}
+                  differences={differences.filter((d) => d.cueIndex === i)}
+                  activeId={activeDifference}
+                  register={(id, el) => {
+                    if (el) reviewButtons.current.set(id, el);
+                    else reviewButtons.current.delete(id);
+                  }}
+                  select={selectReview}
+                />
+              ) : (
+                <>
+                  <TextArea
+                    ref={(el) => {
+                      if (el) textarea.current.set(i, el);
+                      else textarea.current.delete(i);
+                    }}
+                    aria-label={`Sous-titre ${i + 1}`}
+                    dir="auto"
+                    onSelect={(e) =>
+                      setSelectedWord(
+                        e.currentTarget.value
+                          .slice(
+                            e.currentTarget.selectionStart,
+                            e.currentTarget.selectionEnd,
+                          )
+                          .trim(),
+                      )
+                    }
+                    value={cue.text}
+                    onChange={(e) =>
+                      update(
+                        state.present.map((c, n) =>
+                          n === i ? { ...c, text: e.target.value } : c,
+                        ),
+                      )
+                    }
+                  />
+                </>
+              )}
+              {!!vocabularyMatches[i]?.length && (
+                <div className="profile-near-misses">
+                  <strong>Vocabulaire · à relire</strong>
+                  {vocabularyMatches[i].map((match) => (
+                    <div key={`${match.start}-${match.term}`}>
+                      <mark>{match.original}</mark> →{" "}
                       <Button
-                        disabled={!unchanged}
                         onClick={() =>
                           update(
-                            state.present.map((current, index) =>
-                              index === i
+                            state.present.map((c, n) =>
+                              n === i
                                 ? {
-                                    ...current,
-                                    text: difference.candidateText!,
+                                    ...c,
+                                    text:
+                                      c.text.slice(0, match.start) +
+                                      match.term +
+                                      c.text.slice(match.end),
                                   }
-                                : current,
+                                : c,
                             ),
                           )
                         }
                       >
-                        Utiliser cette proposition
+                        Remplacer par {match.term}
                       </Button>
-                    )}
-                    {!difference.candidateText && (
-                      <p>
-                        La divergence traverse plusieurs sous-titres : corrigez
-                        avec l’écoute et le texte de contexte.
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
-            <Button
-              aria-label={`Supprimer le sous-titre ${i + 1}`}
-              onClick={() => update(state.present.filter((_, n) => n !== i))}
-            >
-              <Trash2 size={15} />
-            </Button>
-          </section>
-        ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <Button
+                aria-label={`Supprimer le sous-titre ${i + 1}`}
+                onClick={() => update(state.present.filter((_, n) => n !== i))}
+              >
+                <Trash2 size={15} />
+              </Button>
+            </section>
+          ))}
+        </div>
+        {reviewMode && (
+          <ReviewGutter
+            differences={differences}
+            buttons={reviewButtons}
+            workspace={reviewWorkspace}
+            select={selectReview}
+          />
+        )}
       </div>
+      {reviewMode && activeReview && (
+        <ReviewPopover
+          key={activeReview.id}
+          difference={activeReview}
+          index={differences.findIndex((d) => d.id === activeReview.id)}
+          total={differences.length}
+          cues={state.present}
+          anchor={reviewAnchor}
+          busy={reviewBusy}
+          modifying={modifyingReview}
+          setModifying={setModifyingReview}
+          close={() => {
+            setActiveDifference(null);
+            setModifyingReview(false);
+          }}
+          resolve={decideReview}
+          listen={listenReview}
+          engineName={engineName}
+        />
+      )}
+      <span className="sr-only" aria-live="polite" aria-atomic="true">
+        {reviewMode && activeReview
+          ? `Divergence ${number(differences.findIndex((d) => d.id === activeReview.id) + 1)} sur ${number(differences.length)} · ${isPendingReview(activeReview) ? "à traiter" : "traitée"}`
+          : ""}
+      </span>
       <section className="panel export-bar">
         <div>
           <strong>Exporter</strong>
@@ -1635,7 +1917,7 @@ function Editor({
           </Button>
         </div>
       </section>
-    </>
+    </fieldset>
   );
 }
 function TimeInput({

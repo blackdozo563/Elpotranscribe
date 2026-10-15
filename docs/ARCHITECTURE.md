@@ -12,3 +12,11 @@ Le pont Swift utilise FluidAudio épinglé pour `AsrModelVersion.ultra`, ou whis
 Les données sont dans `~/Library/Application Support/com.elpo.elpotranscribe/` (chemin fourni par Tauri), comprenant `history.json`, `model-updates.json` et `models/`. Le bouton Nouveau lot archive les résultats et libère dix emplacements. La suppression d’historique ne supprime pas les exports, les modèles ni les audios.
 
 La révision Swift est épinglée dans Package.swift. SwiftPM doit encore produire un Package.resolved lors de la première résolution macOS ; avec les traits désactivés, le manifeste FluidAudio n’introduit pas de dépendances de paquets supplémentaires. Les outils et les versions Rust/npm sont verrouillés séparément.
+
+## Relecture persistante
+
+`elpo-core::review` conserve la comparaison historique. `review_session` en dérive des divergences identifiées, avec des lectures d’origine immuables et des plages UTF-16. La résolution modifie uniquement la plage textuelle validée ; les temps restent ceux du principal. Les modifications manuelles invalident les plages concernées. Les comparaisons ambiguës entre plusieurs segments exigent une correction humaine.
+
+`src-tauri/src/history.rs` définit les types réels de `history.json`, migre les comparaisons existantes après copie de sauvegarde et contrôle la révision de chaque document. Une transaction valide et persiste un candidat avant de remplacer l’état en mémoire. Les commandes `list_review`, `resolve_review` et `restore_review` exposent ces opérations ; `restore_review` sert à l’annulation comme au rétablissement et vérifie les métadonnées de comparaison.
+
+L’éditeur charge le document courant à l’ouverture, ajoute textes et décisions à sa pile commune et enregistre chaque résolution/annulation. Il bloque les nouvelles modifications pendant l’écriture. `Review.tsx` affiche les plages reçues, la gouttière et la proposition ancrée ; il ne fait ni inférence ni alignement. Les touches de relecture sont limitées à ce mode et suspendues dans les champs de saisie. Le lecteur existant est utilisé avec les temps réels du segment. La liste « À relire » et le lancement intégré du second avis restent prévus en phase 8.
