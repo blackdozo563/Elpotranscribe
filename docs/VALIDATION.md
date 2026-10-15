@@ -1,5 +1,33 @@
 # Validation réellement effectuée
 
+## Refonte de l’interface — Phase 3 (15 octobre 2026)
+
+Fondations visuelles implémentées, sans changement du moteur, de la segmentation, des temps, de la comparaison ou du format des exports.
+
+Fichiers / choix :
+
+- `src/style.css` : bloc `@theme` avec les dix couleurs demandées, dérivés de surfaces via `color-mix`, polices UI/lecture/temps et courbe `--ease-mac`. Les 130 littéraux relevés dans les règles CSS sont remplacés par des tokens ; seuls les tokens de palette contiennent des valeurs couleur. Fond neutre, couleurs d’action/sélection et d’état séparées, échelle 13/12/22 px, contrôles 28 px (action principale 32), navigation 28 px. Flèche sur les boutons, sélection réservée aux champs et à la transcription, focus visible, anti-aliasing, absence de rebond, réduction des mouvements.
+- `src/components/ui/Button.tsx`, `Select.tsx`, `TextField.tsx`, `NumberStepper.tsx`, `StatusPill.tsx`, `Popover.tsx`, `showNativeMenu.ts`, `index.ts` : composants sans nouvelle dépendance d’exécution. Le select conserve le vrai `<select>` et ses options, avec chevron Lucide, texte tronqué et titre complet. Le stepper garde une saisie numérique et des commandes bornées par les limites existantes. Le popover prévoit Échap/clic extérieur/focus ; son utilisation dans les écrans vient aux phases suivantes. Le menu Tauri garde sa ressource vivante après `popup` (la promesse ne représente pas une sélection) et libère le menu précédent au prochain affichage.
+- `src/App.tsx`, `src/Vocabulary.tsx` : remplacement de tous les boutons, sélecteurs et champs par les composants partagés, sans modifier les commandes métier. Les textarea conservent leurs refs, accès de sélection, recherche et édition. Deux réglages numériques utilisent le stepper ; le statut des fichiers utilise `StatusPill`. Le défilement de recherche respecte maintenant la préférence de réduction des mouvements.
+- `src-tauri/capabilities/default.json` : uniquement `core:menu:allow-new` et `core:menu:allow-popup` ajoutées pour les futurs menus contextuels. Les permissions génériques de shell/réseau/disque ne sont pas ajoutées.
+- `tests/contextMenu.test.ts`, `tests/browser/app.spec.ts` : durée de vie de la ressource de menu, sélecteur conservé, incrément/décrément et transmission des mêmes unités de réglages, mesure de la barre à 52 px et de la navigation à 28 px. Un scénario parcourt les sept pages à 1280 × 800 et vérifie les lignes rendues de chaque texte de bouton visible.
+- `docs/UI-AUDIT.md` : précision de l’inventaire sur la commande Finder `reveal`, utilisée par l’éditeur. Le reste de l’audit décrit toujours la base avant refonte.
+
+| Commande | Résultat |
+|---|---|
+| `npm run build` | TypeScript et Vite réussis, sans avertissement de syntaxe CSS |
+| `npm test` | 14 tests réussis dans 5 fichiers |
+| `ELPO_CHROMIUM_EXECUTABLE=/usr/bin/chromium npm run test:browser` | 21 tests réussis, IPC simulé |
+| `cargo test -p elpo-core --locked` | 28 tests réussis ; aucun échec/ignoré |
+| `cargo clippy -p elpo-core --locked -- -D warnings` | Réussi |
+| `cargo fmt --all --check` | Réussi |
+
+Captures avant : `.ui-captures/phase-02/`. Après : neuf vues dans `.ui-captures/phase-03/`, avec contrôle des libellés également pendant les deux scénarios de capture. Les captures tableau de bord et vocabulaire ont été inspectées visuellement. Ces captures sont exclues de Git ; elles ne prouvent jamais une inférence ni un menu AppKit.
+
+**Point de reprise : Phase 4 — Nettoyage global et Modèles IA.** Les phases 4 à 11 ne sont pas implémentées. Les surtitres, les répétitions de confidentialité, les cartes de statistiques et l’ancien parcours de double vérification restent donc présents à ce stade. Le popover et les menus contextuels sont des fondations ; leur intégration métier n’est pas revendiquée avant ces phases. Pas de nouveau DMG publié, pas de tag modifié.
+
+À vérifier sur Mac avant de considérer cette branche comme une app livrable : compilation Tauri avec la feature privée, XCTest et tests Rust de l’application ; effet de verre/position des boutons ; vrais menus et raccourcis, dialogue d’export, fermeture/annulation avec traitement ou brouillon, lecteur audio et sélection du texte. Après les phases encore à faire : relecture complète au clavier, double vérification réelle, icône Dock et thème clair. Les commandes natives sont indiquées dans la section phase 1 ci-dessous. Aucun résultat macOS de cette branche n’est revendiqué.
+
 ## Refonte de l’interface — Phase 2 (15 octobre 2026)
 
 Fenêtre et menus français implémentés ; **validation native macOS non exécutée dans cet environnement Linux**. Aucun résultat natif n’est déduit des tests navigateur.

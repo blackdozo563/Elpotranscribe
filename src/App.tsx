@@ -1,3 +1,11 @@
+import {
+  Button,
+  Select,
+  TextField,
+  TextArea,
+  NumberStepper,
+  StatusPill,
+} from "./components/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke, convertFileSrc, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
@@ -328,7 +336,7 @@ export default function App() {
           {navigation.map((label, i) => {
             const Icon = icons[i];
             return (
-              <button
+              <Button
                 key={label}
                 className={page === i ? "nav active" : "nav"}
                 onClick={() => {
@@ -340,7 +348,7 @@ export default function App() {
                 {i === 2 && data.jobs.length > 0 && (
                   <span className="count">{data.jobs.length}</span>
                 )}
-              </button>
+              </Button>
             );
           })}
         </nav>
@@ -367,7 +375,7 @@ export default function App() {
       </aside>
       <main>
         <header className="topbar" data-tauri-drag-region>
-          <button
+          <Button
             aria-label={
               sidebarHidden
                 ? "Afficher la barre latérale"
@@ -377,7 +385,7 @@ export default function App() {
             onClick={() => setSidebarHidden((value) => !value)}
           >
             <PanelLeft size={17} />
-          </button>
+          </Button>
           <span>
             Espace de travail <ChevronRight size={14} />{" "}
             <strong>{navigation[page]}</strong>
@@ -391,12 +399,12 @@ export default function App() {
             <div role="alert" className="alert">
               <AlertCircle size={18} />
               <span>{error}</span>
-              <button
+              <Button
                 aria-label="Fermer le message"
                 onClick={() => setError("")}
               >
                 <X size={16} />
-              </button>
+              </Button>
             </div>
           )}
           {notice && (
@@ -416,13 +424,13 @@ export default function App() {
                 Mise à jour de modèles disponible. Téléchargez les nouvelles
                 versions sur ce Mac.
               </span>
-              <button
+              <Button
                 onClick={() => {
                   void navigate(4);
                 }}
               >
                 Voir les modèles
-              </button>
+              </Button>
             </div>
           )}
           {!desktop && (
@@ -523,21 +531,21 @@ export default function App() {
                         importez-les depuis votre Mac.
                       </p>
                       <div className="button-row">
-                        <button
+                        <Button
                           className="primary"
                           disabled={data.busy || working || batch.length >= 10}
                           onClick={() => run("import_files", { folder: false })}
                         >
                           <Plus size={17} />
                           Importer des fichiers audio
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           disabled={data.busy || working}
                           onClick={() => run("import_files", { folder: true })}
                         >
                           <FolderOpen size={17} />
                           Choisir un dossier
-                        </button>
+                        </Button>
                       </div>
                       <small>
                         MP3, WAV, M4A, AAC, FLAC, AIFF · OGG et WebM selon les
@@ -557,7 +565,7 @@ export default function App() {
                     </div>
                     <label>
                       Mode
-                      <select
+                      <Select
                         aria-label="Moteur de transcription"
                         value={data.settings.engine}
                         disabled={data.busy || working}
@@ -579,11 +587,11 @@ export default function App() {
                         <option value="whisper-turbo">
                           Qualité — Whisper large-v3-turbo · Q5_0 · Metal
                         </option>
-                      </select>
+                      </Select>
                     </label>
                     <label>
                       Langue
-                      <select
+                      <Select
                         aria-label="Langue"
                         value={data.settings.language}
                         disabled={data.busy}
@@ -613,11 +621,11 @@ export default function App() {
                             {l}
                           </option>
                         ))}
-                      </select>
+                      </Select>
                     </label>
                     <label>
                       Profil de vocabulaire
-                      <select
+                      <Select
                         aria-label="Profil de vocabulaire"
                         value={data.settings.selectedProfileId ?? ""}
                         disabled={data.busy || working}
@@ -641,15 +649,15 @@ export default function App() {
                             {p.name}
                           </option>
                         ))}
-                      </select>
+                      </Select>
                     </label>
-                    <button
+                    <Button
                       onClick={() => {
                         void navigate(6);
                       }}
                     >
                       Modifier le profil…
-                    </button>
+                    </Button>
                   </section>
                   <section className="panel queue">
                     <div className="panel-heading">
@@ -664,7 +672,7 @@ export default function App() {
                           {data.busy ? " · Traitement en cours" : ""}
                         </p>
                       </div>
-                      <button
+                      <Button
                         className="primary"
                         disabled={
                           !desktop ||
@@ -681,7 +689,7 @@ export default function App() {
                           <Play size={16} />
                         )}
                         {data.busy ? "Traitement en cours…" : "Tout transcrire"}
-                      </button>
+                      </Button>
                     </div>
                     <div className="table-wrap">
                       <table>
@@ -725,46 +733,46 @@ export default function App() {
                                 {time(j.durationMs).slice(0, 8)}
                               </td>
                               <td>
-                                <span className={`status ${j.status}`}>
+                                <StatusPill status={j.status}>
                                   {j.status === "transcribing" && (
                                     <LoaderCircle size={12} className="spin" />
                                   )}
                                   {labels[j.status] ?? j.status}
-                                </span>
+                                </StatusPill>
                               </td>
                               <td>
                                 <div className="row-actions">
                                   {j.status === "completed" && (
-                                    <button onClick={() => setSelected(j)}>
+                                    <Button onClick={() => setSelected(j)}>
                                       Ouvrir
                                       <ArrowUpRight size={13} />
-                                    </button>
+                                    </Button>
                                   )}
                                   {["failed", "cancelled"].includes(
                                     j.status,
                                   ) && (
-                                    <button
+                                    <Button
                                       title="Réessayer"
                                       onClick={() =>
                                         run("retry_job", { id: j.id })
                                       }
                                     >
                                       <RotateCcw size={15} />
-                                    </button>
+                                    </Button>
                                   )}
                                   {["pending", "transcribing"].includes(
                                     j.status,
                                   ) ? (
-                                    <button
+                                    <Button
                                       title="Annuler"
                                       onClick={() =>
                                         run("cancel_job", { id: j.id })
                                       }
                                     >
                                       <X size={16} />
-                                    </button>
+                                    </Button>
                                   ) : (
-                                    <button
+                                    <Button
                                       title="Supprimer la transcription"
                                       aria-label={`Supprimer ${j.name}`}
                                       disabled={working}
@@ -777,7 +785,7 @@ export default function App() {
                                       }
                                     >
                                       <Trash2 size={14} />
-                                    </button>
+                                    </Button>
                                   )}
                                 </div>
                               </td>
@@ -797,7 +805,7 @@ export default function App() {
                       )}
                     </div>
                     <div className="queue-footer">
-                      <button
+                      <Button
                         disabled={
                           !batch.some((j) =>
                             ["completed", "failed", "cancelled"].includes(
@@ -808,14 +816,14 @@ export default function App() {
                         onClick={() => run("archive_completed")}
                       >
                         Nouveau lot
-                      </button>
+                      </Button>
                       <small>
                         Nouveau lot conserve les résultats dans « Mes
                         transcriptions ». La corbeille les supprime de
                         l’historique, sans effacer les audios.
                       </small>
                       <label className="check-label">
-                        <input
+                        <TextField
                           type="checkbox"
                           checked={data.settings.autoSave}
                           onChange={(e) =>
@@ -829,13 +837,13 @@ export default function App() {
                         />
                         Enregistrer les SRT dans les dossiers d’origine
                       </label>
-                      <button
+                      <Button
                         disabled={!completed}
                         onClick={() => run("export_zip")}
                       >
                         <Download size={16} />
                         Tous les SRT en ZIP
-                      </button>
+                      </Button>
                     </div>
                   </section>
                   <div className="footnote">
@@ -862,13 +870,13 @@ export default function App() {
                           sont téléchargés uniquement à votre demande.
                         </p>
                       </div>
-                      <button
+                      <Button
                         disabled={!desktop || data.busy || working}
                         onClick={() => run("check_model_updates")}
                       >
                         <RotateCcw size={16} />
                         Vérifier les mises à jour
-                      </button>
+                      </Button>
                     </div>
                   </section>
                   <section className="panel model-card">
@@ -900,7 +908,7 @@ export default function App() {
                       </span>
                     </div>
                     <div className="button-row">
-                      <button
+                      <Button
                         className="primary"
                         disabled={data.busy || working}
                         onClick={() => run("install_model")}
@@ -913,9 +921,9 @@ export default function App() {
                         {data.installedModels?.includes("ultra")
                           ? "Vérifier / réinstaller"
                           : "Installer Parakeet Ultra"}
-                      </button>
+                      </Button>
                       {data.installedModels?.includes("ultra") && (
-                        <button
+                        <Button
                           disabled={data.busy || working}
                           onClick={() =>
                             confirmAndRun(
@@ -926,7 +934,7 @@ export default function App() {
                         >
                           <Trash2 size={16} />
                           Supprimer
-                        </button>
+                        </Button>
                       )}
                     </div>
                     <ModelUpdateStatus
@@ -966,7 +974,7 @@ export default function App() {
                           : "Téléchargement explicite depuis Hugging Face"}
                       </p>
                       <div className="button-row">
-                        <button
+                        <Button
                           className="primary"
                           disabled={data.busy || working}
                           onClick={() =>
@@ -977,9 +985,9 @@ export default function App() {
                           {data.installedModels?.includes(model.id)
                             ? `Réinstaller ${model.name}`
                             : `Installer ${model.name}`}
-                        </button>
+                        </Button>
                         {data.installedModels?.includes(model.id) && (
-                          <button
+                          <Button
                             disabled={data.busy || working}
                             onClick={() =>
                               confirmAndRun(
@@ -991,7 +999,7 @@ export default function App() {
                           >
                             <Trash2 size={16} />
                             Supprimer
-                          </button>
+                          </Button>
                         )}
                       </div>
                       <ModelUpdateStatus
@@ -1102,7 +1110,7 @@ function VerificationPanel({
         </p>
         <label>
           Audio à vérifier
-          <select
+          <Select
             aria-label="Audio à vérifier"
             value={selectedSource}
             disabled={disabled}
@@ -1116,12 +1124,12 @@ function VerificationPanel({
                 {job.name}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <div className="form-grid">
           <label>
             Moteur principal
-            <select
+            <Select
               aria-label="Moteur principal"
               value={primary}
               disabled={disabled}
@@ -1136,11 +1144,11 @@ function VerificationPanel({
                   {engine.name}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
           <label>
             Second avis
-            <select
+            <Select
               aria-label="Second avis"
               value={secondary}
               disabled={disabled}
@@ -1155,11 +1163,11 @@ function VerificationPanel({
                   {engine.name}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
         </div>
         <div className="button-row">
-          <button
+          <Button
             disabled={disabled}
             onClick={() => {
               setPrimary(secondary);
@@ -1168,8 +1176,8 @@ function VerificationPanel({
           >
             <RotateCcw size={16} />
             Inverser les moteurs
-          </button>
-          <button
+          </Button>
+          <Button
             className="primary"
             disabled={
               disabled ||
@@ -1187,21 +1195,21 @@ function VerificationPanel({
           >
             <ScanText size={16} />
             Transcrire et comparer
-          </button>
+          </Button>
         </div>
         {primary === secondary && <p>Choisissez deux moteurs différents.</p>}
         {missing.length > 0 && (
           <div className="model-details">
             <span>Modèles à télécharger sur ce Mac :</span>
             {missing.map((engine) => (
-              <button
+              <Button
                 key={engine}
                 disabled={disabled}
                 onClick={() => run("install_model", { engine })}
               >
                 <Download size={16} />
                 Télécharger {engineName(engine)}
-              </button>
+              </Button>
             ))}
           </div>
         )}
@@ -1213,9 +1221,9 @@ function VerificationPanel({
         {active && (
           <p role="status">
             Analyse locale en cours : {active.name}{" "}
-            <button onClick={() => run("cancel_job", { id: active.id })}>
+            <Button onClick={() => run("cancel_job", { id: active.id })}>
               Annuler la vérification
-            </button>
+            </Button>
           </p>
         )}
       </section>
@@ -1245,10 +1253,10 @@ function VerificationPanel({
             </p>
           )}
           {job.status === "completed" && job.cues.length > 0 && (
-            <button onClick={() => open(job)}>
+            <Button onClick={() => open(job)}>
               Ouvrir la relecture
               <ArrowUpRight size={16} />
-            </button>
+            </Button>
           )}
         </section>
       ))}
@@ -1309,12 +1317,12 @@ function ModelUpdateStatus({
       </span>
       {update.error && <span>{update.error}</span>}
       {["available", "unknown"].includes(update.status) && (
-        <button className="primary" disabled={disabled} onClick={install}>
+        <Button className="primary" disabled={disabled} onClick={install}>
           <Download size={16} />
           {update.status === "available"
             ? "Télécharger la mise à jour"
             : "Actualiser le modèle local"}
-        </button>
+        </Button>
       )}
     </div>
   );
@@ -1331,7 +1339,7 @@ function Preferences({
     <section className="panel preferences">
       <h2>Sous-titres</h2>
       <label className="check-label">
-        <input
+        <TextField
           type="checkbox"
           checked={s.autoModelUpdates}
           onChange={(event) =>
@@ -1344,7 +1352,7 @@ function Preferences({
       <div className="form-grid">
         <label>
           Préréglage
-          <select
+          <Select
             onChange={(e) => {
               const short = e.target.value === "short";
               setS({
@@ -1359,26 +1367,26 @@ function Preferences({
           >
             <option value="standard">Standard / YouTube</option>
             <option value="short">TikTok / Reels / Sous-titres courts</option>
-          </select>
+          </Select>
         </label>
         <label>
           Caractères par ligne
-          <input
-            type="number"
-            min="12"
-            max="80"
+          <NumberStepper
+            aria-label="Caractères par ligne"
+            min={12}
+            max={80}
             value={s.subtitles.lineLength}
-            onChange={(e) =>
+            onValueChange={(value) =>
               setS({
                 ...s,
-                subtitles: { ...s.subtitles, lineLength: +e.target.value },
+                subtitles: { ...s.subtitles, lineLength: value },
               })
             }
           />
         </label>
         <label>
           Nombre de lignes
-          <select
+          <Select
             value={s.subtitles.maxLines}
             onChange={(e) =>
               setS({
@@ -1389,21 +1397,21 @@ function Preferences({
           >
             <option value="1">1</option>
             <option value="2">2</option>
-          </select>
+          </Select>
         </label>
         <label>
           Durée cible maximum (secondes)
-          <input
-            type="number"
-            min="1"
-            max="10"
+          <NumberStepper
+            aria-label="Durée cible maximum (secondes)"
+            min={1}
+            max={10}
             value={s.subtitles.maxDurationMs / 1000}
-            onChange={(e) =>
+            onValueChange={(value) =>
               setS({
                 ...s,
                 subtitles: {
                   ...s.subtitles,
-                  maxDurationMs: +e.target.value * 1000,
+                  maxDurationMs: value * 1000,
                 },
               })
             }
@@ -1414,7 +1422,7 @@ function Preferences({
         Les frontières utilisent les horodatages reconnus. Un mot long peut
         demander un réglage plus large.
       </p>
-      <button
+      <Button
         className="primary"
         onClick={() => {
           void save(s).catch(() => {});
@@ -1422,7 +1430,7 @@ function Preferences({
       >
         <Save size={16} />
         Enregistrer les préférences
-      </button>
+      </Button>
     </section>
   );
 }
@@ -1487,7 +1495,12 @@ function Editor({
     const field = textarea.current.get(match.cue);
     field?.focus({ preventScroll: true });
     field?.setSelectionRange(match.start, match.end);
-    field?.scrollIntoView({ block: "center", behavior: "smooth" });
+    field?.scrollIntoView({
+      block: "center",
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
+    });
   };
   useEffect(() => {
     if (searchOpen) searchInput.current?.focus();
@@ -1597,9 +1610,9 @@ function Editor({
     <>
       <div className="editor-heading">
         <div>
-          <button className="text-button" onClick={leave}>
+          <Button className="text-button" onClick={leave}>
             ← Retour à la file
-          </button>
+          </Button>
           <h1>{job.name}</h1>
           <p>
             {job.engine} ·{" "}
@@ -1612,7 +1625,7 @@ function Editor({
             {needsExport ? " · Export SRT à mettre à jour" : ""}
           </p>
         </div>
-        <button
+        <Button
           className="primary"
           onClick={() => {
             void save().catch((e) => setError(String(e)));
@@ -1620,7 +1633,7 @@ function Editor({
         >
           <Save size={16} />
           Enregistrer les modifications
-        </button>
+        </Button>
       </div>
       {error && (
         <div role="alert" className="alert">
@@ -1649,7 +1662,7 @@ function Editor({
           </p>
           <div className="button-row review-priority">
             {job.verification.review.differences.slice(0, 20).map((d) => (
-              <button
+              <Button
                 key={d.cueIndex}
                 onClick={() => {
                   setSelectedCue(d.cueIndex);
@@ -1660,7 +1673,7 @@ function Editor({
               >
                 {d.profileTerm ? "Terme du profil · " : "À relire · "}Sous-titre{" "}
                 {d.cueIndex + 1}
-              </button>
+              </Button>
             ))}
           </div>
           {job.verification.review.approximate && (
@@ -1685,7 +1698,7 @@ function Editor({
         {missing && (
           <p>
             Audio déplacé, supprimé ou non lisible par le lecteur.{" "}
-            <button
+            <Button
               onClick={() => {
                 void action("relink", { id: job.id })
                   .then(close)
@@ -1694,7 +1707,7 @@ function Editor({
             >
               <Link size={14} />
               Relier l’audio
-            </button>
+            </Button>
           </p>
         )}
       </section>
@@ -1705,7 +1718,7 @@ function Editor({
             Les propositions restent à valider à l’écoute ; elles ne remplacent
             rien automatiquement.
           </p>
-          <button
+          <Button
             disabled={!selectedWord}
             onClick={() => {
               void action("add_profile_term", {
@@ -1718,27 +1731,27 @@ function Editor({
             }}
           >
             Ajouter au profil
-          </button>
+          </Button>
           {selectedWord && <span> « {selectedWord} »</span>}
         </section>
       )}
       <div className="editor-toolbar">
         <div className="button-row">
-          <button
+          <Button
             disabled={!state.past.length}
             onClick={() => setState(undo(state))}
           >
             <Undo2 size={15} />
             Annuler
-          </button>
-          <button
+          </Button>
+          <Button
             disabled={!state.future.length}
             onClick={() => setState(redo(state))}
           >
             <Redo2 size={15} />
             Rétablir
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={() =>
               attempt(() =>
                 update(
@@ -1754,22 +1767,22 @@ function Editor({
           >
             <Scissors size={15} />
             Scinder au curseur
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={() =>
               attempt(() => update(merge(state.present, selectedCue)))
             }
           >
             <Combine size={15} />
             Fusionner
-          </button>
-          <button
+          </Button>
+          <Button
             aria-expanded={searchOpen}
             onClick={() => setSearchOpen(!searchOpen)}
           >
             Rechercher / Remplacer
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={() => {
               const last = state.present.at(-1)?.endMs ?? 0;
               update([
@@ -1784,7 +1797,7 @@ function Editor({
           >
             <Plus size={15} />
             Ajouter
-          </button>
+          </Button>
         </div>
       </div>
       {searchOpen && (
@@ -1795,7 +1808,7 @@ function Editor({
           <div className="button-row">
             <label>
               Rechercher
-              <input
+              <TextField
                 ref={searchInput}
                 value={query}
                 onChange={(e) => {
@@ -1817,12 +1830,12 @@ function Editor({
             </label>
             <label>
               Remplacer par
-              <input
+              <TextField
                 value={replacement}
                 onChange={(e) => setReplacement(e.target.value)}
               />
             </label>
-            <button
+            <Button
               disabled={!matches.length}
               onClick={() =>
                 selectMatch(
@@ -1831,16 +1844,16 @@ function Editor({
               }
             >
               Précédent
-            </button>
-            <button
+            </Button>
+            <Button
               disabled={!matches.length}
               onClick={() =>
                 selectMatch((currentMatchIndex + 1) % matches.length)
               }
             >
               Suivant
-            </button>
-            <button
+            </Button>
+            <Button
               disabled={!matches.length}
               onClick={() =>
                 update(
@@ -1853,8 +1866,8 @@ function Editor({
               }
             >
               Remplacer
-            </button>
-            <button
+            </Button>
+            <Button
               disabled={!matches.length}
               onClick={() => {
                 update(replaceMatches(state.present, matches, replacement));
@@ -1862,17 +1875,17 @@ function Editor({
               }}
             >
               Remplacer tout
-            </button>
-            <button
+            </Button>
+            <Button
               aria-label="Fermer la recherche"
               onClick={() => setSearchOpen(false)}
             >
               <X size={16} />
-            </button>
+            </Button>
           </div>
           <div className="button-row search-options">
             <label>
-              <input
+              <TextField
                 type="checkbox"
                 checked={caseSensitive}
                 onChange={(e) => {
@@ -1883,7 +1896,7 @@ function Editor({
               Respecter la casse
             </label>
             <label>
-              <input
+              <TextField
                 type="checkbox"
                 checked={wholeWord}
                 onChange={(e) => {
@@ -1914,7 +1927,7 @@ function Editor({
             className={`cue panel ${active === i ? "playing" : ""} ${selectedCue === i ? "selected" : ""}`}
             onFocus={() => setSelectedCue(i)}
           >
-            <button
+            <Button
               className="cue-number"
               title="Écouter ce passage"
               onClick={() => {
@@ -1927,7 +1940,7 @@ function Editor({
             >
               {String(i + 1).padStart(2, "0")}
               <Play size={12} />
-            </button>
+            </Button>
             <div className="cue-timing">
               <TimeInput
                 label={`Début ${i + 1}`}
@@ -1952,7 +1965,7 @@ function Editor({
                 }
               />
             </div>
-            <textarea
+            <TextArea
               ref={(el) => {
                 if (el) textarea.current.set(i, el);
                 else textarea.current.delete(i);
@@ -1993,7 +2006,7 @@ function Editor({
                 {vocabularyMatches[i].map((match) => (
                   <div key={`${match.start}-${match.term}`}>
                     <mark>{match.original}</mark> →{" "}
-                    <button
+                    <Button
                       onClick={() =>
                         update(
                           state.present.map((c, n) =>
@@ -2011,7 +2024,7 @@ function Editor({
                       }
                     >
                       Remplacer par {match.term}
-                    </button>
+                    </Button>
                   </div>
                 ))}
               </div>
@@ -2041,7 +2054,7 @@ function Editor({
                         "Passage absent du second résultat"}
                     </p>
                     {difference.candidateText && (
-                      <button
+                      <Button
                         disabled={!unchanged}
                         onClick={() =>
                           update(
@@ -2057,7 +2070,7 @@ function Editor({
                         }
                       >
                         Utiliser cette proposition
-                      </button>
+                      </Button>
                     )}
                     {!difference.candidateText && (
                       <p>
@@ -2068,12 +2081,12 @@ function Editor({
                   </div>
                 );
               })}
-            <button
+            <Button
               aria-label={`Supprimer le sous-titre ${i + 1}`}
               onClick={() => update(state.present.filter((_, n) => n !== i))}
             >
               <Trash2 size={15} />
-            </button>
+            </Button>
           </section>
         ))}
       </div>
@@ -2083,28 +2096,28 @@ function Editor({
           <p>Chaque export conserve le nom de l’audio original.</p>
         </div>
         <div className="button-row">
-          <button
+          <Button
             onClick={() => {
               void exportFile("txt", false);
             }}
           >
             TXT
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={() => {
               void exportFile("vtt", false);
             }}
           >
             VTT
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={() => {
               void exportFile("srt", false);
             }}
           >
             Exporter vers…
-          </button>
-          <button
+          </Button>
+          <Button
             className="primary"
             onClick={() => {
               void exportFile("srt", true);
@@ -2112,15 +2125,15 @@ function Editor({
           >
             <Save size={16} />
             SRT à côté de l’audio
-          </button>
-          <button
+          </Button>
+          <Button
             title="Afficher le dernier SRT dans le Finder"
             onClick={() => {
               void action("reveal", { id: job.id }).catch(() => {});
             }}
           >
             <FolderOpen size={16} />
-          </button>
+          </Button>
         </div>
       </section>
     </>
@@ -2139,7 +2152,7 @@ function TimeInput({
   useEffect(() => setText(time(value)), [value]);
   const parsed = parseTime(text);
   return (
-    <input
+    <TextField
       aria-label={label}
       aria-invalid={parsed === null}
       className="mono"

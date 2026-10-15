@@ -1,3 +1,4 @@
+import { Button, Select, TextField, TextArea } from "./components/ui";
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import type { VocabularyProfile } from "./domain";
 export const cleanTerms = (text: string) => {
@@ -176,7 +177,7 @@ export default function Vocabulary({
           aria-label="Profils de vocabulaire"
         >
           {profiles.map((p) => (
-            <button
+            <Button
               key={p.id}
               className={
                 draft?.id === p.id ? "profile-item active" : "profile-item"
@@ -188,10 +189,10 @@ export default function Vocabulary({
                 {p.language.toUpperCase()} · {p.terms.length} termes
                 {p.builtin ? " · Fourni" : ""}
               </span>
-            </button>
+            </Button>
           ))}
           <div className="button-row">
-            <button
+            <Button
               disabled={saving}
               onClick={() =>
                 choose({
@@ -205,8 +206,8 @@ export default function Vocabulary({
               }
             >
               Nouveau profil
-            </button>
-            <button
+            </Button>
+            <Button
               disabled={!edited || saving}
               onClick={() =>
                 edited &&
@@ -219,8 +220,8 @@ export default function Vocabulary({
               }
             >
               Dupliquer
-            </button>
-            <button
+            </Button>
+            <Button
               disabled={!draft?.id || draft.builtin || saving}
               onClick={() =>
                 void attempt(async () => {
@@ -236,9 +237,9 @@ export default function Vocabulary({
               }
             >
               Supprimer
-            </button>
+            </Button>
             {draft?.builtin && (
-              <button
+              <Button
                 disabled={saving}
                 onClick={() =>
                   void attempt(async () => {
@@ -257,9 +258,9 @@ export default function Vocabulary({
                 }
               >
                 Réinitialiser
-              </button>
+              </Button>
             )}
-            <button
+            <Button
               disabled={saving}
               onClick={() =>
                 void attempt(async () => {
@@ -270,8 +271,8 @@ export default function Vocabulary({
               }
             >
               Importer .json
-            </button>
-            <button
+            </Button>
+            <Button
               disabled={!draft?.id || dirty || saving}
               onClick={() =>
                 void attempt(async () => {
@@ -280,7 +281,7 @@ export default function Vocabulary({
               }
             >
               Exporter .json
-            </button>
+            </Button>
           </div>
         </aside>
         {draft && (
@@ -290,7 +291,7 @@ export default function Vocabulary({
           >
             <label>
               Nom du profil
-              <input
+              <TextField
                 aria-label="Nom du profil"
                 value={draft.name}
                 onChange={(e) => setDraft({ ...draft, name: e.target.value })}
@@ -298,7 +299,7 @@ export default function Vocabulary({
             </label>
             <label>
               Langue du profil
-              <select
+              <Select
                 aria-label="Langue du profil"
                 value={draft.language}
                 onChange={(e) =>
@@ -310,11 +311,11 @@ export default function Vocabulary({
               >
                 <option value="fr">Français</option>
                 <option value="en">Anglais</option>
-              </select>
+              </Select>
             </label>
             <label>
               Termes du profil
-              <textarea
+              <TextArea
                 rows={10}
                 aria-label="Termes du profil"
                 value={termsText}
@@ -327,7 +328,7 @@ export default function Vocabulary({
               vides ignorés.
             </small>
             <div className="button-row">
-              <input
+              <TextField
                 aria-label="Ajouter un terme"
                 value={quick}
                 onChange={(e) => setQuick(e.target.value)}
@@ -338,11 +339,11 @@ export default function Vocabulary({
                   }
                 }}
               />
-              <button onClick={add}>+ Ajouter</button>
+              <Button onClick={add}>+ Ajouter</Button>
             </div>
             <label>
               Invite Whisper
-              <textarea
+              <TextArea
                 rows={4}
                 aria-label="Invite Whisper"
                 value={draft.whisper_prompt}
@@ -376,7 +377,7 @@ export default function Vocabulary({
               </p>
             )}
             <div className="button-row">
-              <button
+              <Button
                 className="primary"
                 disabled={saving || !draft.name.trim()}
                 onClick={() =>
@@ -390,15 +391,15 @@ export default function Vocabulary({
                 }
               >
                 Enregistrer
-              </button>
-              <button
+              </Button>
+              <Button
                 disabled={saving || !dirty}
                 onClick={() =>
                   load(original?.id ? original : (profiles[0] ?? null))
                 }
               >
                 Annuler
-              </button>
+              </Button>
               <span>
                 {dirty ? "Modifications non enregistrées" : "Profil enregistré"}
               </span>

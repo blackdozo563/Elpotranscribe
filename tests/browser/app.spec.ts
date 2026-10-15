@@ -631,3 +631,110 @@ test("menu Quitter : un traitement exige une confirmation explicite", async ({
     )
     .toEqual({ quit: true });
 });
+
+test("contrôles compacts : sélecteur natif, stepper et sauvegarde des valeurs", async ({
+  page,
+}) => {
+  await localReviewFixture(page);
+  const selector = page.getByLabel("Moteur de transcription", { exact: true });
+  await expect(selector).toHaveAttribute("title", "Rapide — Parakeet Ultra");
+  expect(
+    await selector.evaluate((element) => getComputedStyle(element).appearance),
+  ).toBe("none");
+  await page.getByRole("button", { name: "Paramètres", exact: true }).click();
+  const characters = page.getByRole("spinbutton", {
+    name: "Caractères par ligne",
+    exact: true,
+  });
+  await expect(characters).toHaveValue("42");
+  await page
+    .getByRole("button", {
+      name: "Augmenter Caractères par ligne",
+      exact: true,
+    })
+    .click();
+  await expect(characters).toHaveValue("43");
+  await page
+    .getByRole("button", {
+      name: "Diminuer Durée cible maximum (secondes)",
+      exact: true,
+    })
+    .click();
+  await page
+    .getByRole("button", { name: "Enregistrer les préférences", exact: true })
+    .click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as unknown as {
+              __TEST_CALLS__: Array<{
+                command: string;
+                args: { settings?: { subtitles: unknown } };
+              }>;
+            }
+          ).__TEST_CALLS__.find((call) => call.command === "save_settings")
+            ?.args.settings?.subtitles,
+      ),
+    )
+    .toEqual({ lineLength: 43, maxLines: 2, maxDurationMs: 4000 });
+});
+
+test("échelle à 1280 × 800 : boutons sur une ligne et barre d’outils de 52 px", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await localReviewFixture(page);
+  for (const name of [
+    "Tableau de bord",
+    "Nouvelle transcription",
+    "Mes transcriptions",
+    "Double vérification",
+    "Modèles IA",
+    "Paramètres",
+    "Vocabulaire",
+  ]) {
+    await page
+      .getByRole("button", {
+        name: name === "Mes transcriptions" ? /Mes transcriptions/ : name,
+        exact: name !== "Mes transcriptions",
+      })
+      .click();
+    const wrapped = await page
+      .locator("button:visible")
+      .evaluateAll((buttons) =>
+        buttons.flatMap((button) => {
+          const walker = document.createTreeWalker(
+            button,
+            NodeFilter.SHOW_TEXT,
+          );
+          const errors: string[] = [];
+          while (walker.nextNode()) {
+            const node = walker.currentNode;
+            if (!node.textContent?.trim()) continue;
+            const range = document.createRange();
+            range.selectNodeContents(node);
+            const lines = new Set(
+              Array.from(range.getClientRects()).map((rect) =>
+                Math.round(rect.top),
+              ),
+            );
+            if (lines.size > 1) errors.push(node.textContent.trim());
+          }
+          return errors;
+        }),
+      );
+    expect(wrapped, `Libellés trop longs dans ${name}`).toEqual([]);
+    expect(
+      await page
+        .locator(".topbar")
+        .evaluate((element) => element.getBoundingClientRect().height),
+    ).toBe(52);
+    expect(
+      await page
+        .getByRole("button", { name: "Paramètres", exact: true })
+        .evaluate((element) => element.getBoundingClientRect().height),
+    ).toBe(28);
+  }
+});
