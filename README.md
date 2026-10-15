@@ -4,6 +4,8 @@ Application française de transcription locale pour macOS 14+ Apple Silicon. Deu
 
 La **préversion 1.2.0 est publiée** : [télécharger le DMG Apple Silicon](https://github.com/blackdozo563/Elpotranscribe/releases/download/v1.2.0/ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.2.0.dmg). Le contrôle court natif a réussi et le téléchargement a été revérifié. SHA-256 : `1fee109164179c025d7bb018496527d2cbe82932b3969bbb9695359897377ce8`. Signature ad hoc, non notariée. Le test long reste indépendant ; les performances sur M2 8 Go physique sont à mesurer.
 
+La refonte en cours sur `refonte-interface` conserve les moteurs et données de 1.2.0. Son bundle porte le nom `Elpotranscribe.app` ; le DMG **déjà publié ci-dessus conserve son ancien nom** `ELPOTRANSCRIBE.app`. Adaptez le chemin des commandes de benchmark si vous utilisez ce DMG. Les phases validées sont décrites dans [l’audit UI](docs/UI-AUDIT.md) et [le rapport de validation](docs/VALIDATION.md). Aucune nouvelle préversion de la refonte n’est encore publiée.
+
 ## Transcrire et relire
 
 Importer jusqu’à dix fichiers par lot, choisir le moteur, la langue et éventuellement un profil. Les traitements sont séquentiels. Le changement de profil fixe sa langue ; « Aucun profil » conserve une transcription sans invite de domaine.
@@ -35,8 +37,8 @@ Les données restent dans `~/Library/Application Support/com.elpo.elpotranscribe
 Installer les deux modèles puis quitter l’application pendant les mesures. Le script est inclus dans le `.app` ; **ni Python, ni Node, ni Homebrew, ni Xcode ne sont nécessaires**. Dans Terminal, remplacer les chemins des audios :
 
 ```sh
-bash "/Applications/ELPOTRANSCRIBE.app/Contents/Resources/bench-local.sh" "$HOME/Music/extrait-2-minutes.mp3" fr
-bash "/Applications/ELPOTRANSCRIBE.app/Contents/Resources/bench-local.sh" "$HOME/Music/enregistrement-20-minutes.mp3" fr
+bash "/Applications/Elpotranscribe.app/Contents/Resources/bench-local.sh" "$HOME/Music/extrait-2-minutes.mp3" fr
+bash "/Applications/Elpotranscribe.app/Contents/Resources/bench-local.sh" "$HOME/Music/enregistrement-20-minutes.mp3" fr
 ```
 
 Pour un fichier anglais, remplacer `fr` par `en`. Chaque commande effectue Ultra, Turbo, puis une vraie double vérification Ultra → Turbo (deux nouvelles passes), sans profil et sans modifier l’audio ni ses exports. Elle affiche temps mural, pic RSS du moteur, facteur temps réel et nombre de segments. Un facteur inférieur à 1 signifie un traitement plus rapide que la durée de l’audio. Le pic RSS de la double vérification est le maximum des deux processus successifs, pas leur somme ; il exclut l’interface et ne mesure pas toute la mémoire unifiée ni le swap. Le verrou des modèles protège aussi contre deux lancements indépendants du benchmark.

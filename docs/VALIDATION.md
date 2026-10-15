@@ -1,5 +1,32 @@
 # Validation réellement effectuée
 
+## Refonte de l’interface — Phase 2 (15 octobre 2026)
+
+Fenêtre et menus français implémentés ; **validation native macOS non exécutée dans cet environnement Linux**. Aucun résultat natif n’est déduit des tests navigateur.
+
+Fichiers / choix :
+
+- `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, `src-tauri/capabilities/default.json`, `src-tauri/Info.plist` : Overlay, titre masqué, position des boutons `{ x: 16, y: 18 }`, fenêtre transparente et effet `sidebar` suivant l’activité, feature `macos-private-api`, permission de déplacement, région française. Minimum existant 960 × 650 conservé. Toutes les clés et valeurs de configuration ont été validées contre le schéma de la CLI Tauri 2.12.2 installée avec Python jsonschema (outil de validation déjà disponible ; pas de dépendance d’exécution ajoutée).
+- `src-tauri/src/menus.rs`, `src-tauri/src/main.rs`, `src-tauri/src/desktop.rs` : menus applicatifs français ; actions personnalisées via `app-menu` vers React ; commandes contextuelles grisées, pas de doublon d’implémentation de l’éditeur. Les signatures des API ont été vérifiées dans les sources de Tauri 2.12.3 installées, **pas compilées pour macOS ici**. Aide reste désactivé tant qu’aucune aide n’est fournie. Les fermetures/sorties passent par la garde du frontend après son abonnement ; l’arrêt natif existant intervient lors de la sortie autorisée.
+- `src/nativeMenu.ts`, `src/App.tsx`, `src/Vocabulary.tsx`, `src/style.css` : barre de 52 px déplaçable, espace au-dessus de la navigation, sidebar transparente/repliable, lien provisoire Réglages → Paramètres, une garde commune de fermeture/navigation pour les brouillons, confirmation de traitement en cours, ⌘Z/⇧⌘Z vers la pile de l’éditeur et ⌘F vers sa recherche. Le menu Exporter réutilise l’export SRT existant avec dialogue, actif uniquement dans un éditeur valide.
+- `scripts/validate-dmg.sh`, `scripts/bench-local.sh`, `.github/workflows/release-macos.yml`, `README.md` : nouveau produit `Elpotranscribe.app`, artefacts futurs avec la même casse, validation du nom de bundle depuis la configuration ; identifiant **com.elpo.elpotranscribe inchangé**. Aucun tag ni asset de la 1.2.0 publiée n’est remplacé. La README distingue explicitement le nom du bundle publié de celui de cette branche.
+- `tests/nativeMenu.test.ts`, `tests/browser/app.spec.ts` : abonnement avant disponibilité, nettoyage en cas d’échec, événements inconnus ignorés ; réglages/import/repli, pile d’annulation commune (boutons, menus simulés et clavier), recherche, export sans changement de temps, refus de fermeture avec brouillon et confirmation explicite de sortie pendant un traitement.
+
+| Commande | Résultat |
+|---|---|
+| `npm run build` | Réussi |
+| `npm test` | 13 tests réussis dans 4 fichiers |
+| `ELPO_CHROMIUM_EXECUTABLE=/usr/bin/chromium npm run test:browser` | 19 tests réussis, IPC simulé |
+| `cargo test -p elpo-core --locked` | 28 tests réussis, aucun échec/ignoré |
+| `cargo clippy -p elpo-core --locked -- -D warnings` | Réussi |
+| `cargo fmt --all --check` | Réussi |
+| `bash -n scripts/bench-local.sh scripts/validate-dmg.sh` | Réussi |
+| Validation JSON Schema Tauri + lecture plist | Réussies |
+
+Captures : neuf vues initiales dans `.ui-captures/phase-01/`, puis neuf vues après le changement de fenêtre/barre dans `.ui-captures/phase-02/`, à 1280 × 800. Deux scénarios de capture ont réussi. La transparence dans Chromium ne reproduit pas le verre AppKit. L’aspect dense et les boutons sur une ligne relèvent de la phase 3, encore à effectuer.
+
+À exécuter sur Mac : les commandes natives listées ci-dessous, puis vérifier les boutons de fenêtre/verre, tous les menus et leurs raccourcis, le retour au focus après un dialogue, les commandes grisées, ⌘W/⌘Q et le bouton rouge avec traitement et/ou brouillon. Aucune modification de Swift, de la comparaison, des temps ou des formats d’export. Prochaine phase : **Phase 3 — Fondations visuelles**.
+
 ## Refonte de l’interface — Phase 1 (15 octobre 2026)
 
 Branche `refonte-interface`, base `1ec8c32`. Fichiers de la phase : `docs/UI-AUDIT.md` (écrans/IPC/relecture/raccourcis/styles), `AGENTS.md` (règles Design), `.gitignore` (captures locales), présente section. Aucun fichier applicatif, moteur, temps ou export modifié ; aucune dépendance ajoutée. L’audit inventorie neuf sélecteurs et 130 littéraux de couleur distincts dans le CSS.

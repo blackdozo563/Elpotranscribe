@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { VocabularyProfile } from "./domain";
 export const cleanTerms = (text: string) => {
   const seen = new Set<string>();
@@ -79,26 +78,9 @@ export default function Vocabulary({
       }
     };
     window.addEventListener("beforeunload", before);
-    let disposed = false;
-    let unlisten: (() => void) | undefined;
-    if ("__TAURI_INTERNALS__" in window)
-      void getCurrentWindow()
-        .onCloseRequested(async (e) => {
-          if (dirty) {
-            e.preventDefault();
-            if (await mayLeave()) await getCurrentWindow().destroy();
-          }
-        })
-        .then((fn) => {
-          if (disposed) fn();
-          else unlisten = fn;
-        })
-        .catch((e) => setError(String(e)));
     return () => {
       guard.current = null;
       window.removeEventListener("beforeunload", before);
-      disposed = true;
-      unlisten?.();
     };
   }, [dirty, guard, action]);
   const attempt = async (work: () => Promise<void>) => {

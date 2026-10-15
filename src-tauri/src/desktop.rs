@@ -1295,9 +1295,27 @@ pub fn run() {
                     platform,
                 }),
             });
+            crate::menus::install(app.handle())?;
             Ok(())
         })
+        .on_menu_event(|app, event| crate::menus::dispatch(app, event.id().as_ref()))
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main"
+                    && window
+                        .state::<crate::menus::MenuSession>()
+                        .ready
+                        .load(std::sync::atomic::Ordering::SeqCst)
+                {
+                    api.prevent_close();
+                    crate::menus::dispatch(window.app_handle(), "close");
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![
+            crate::menus::menu_ready,
+            crate::menus::sync_menu_context,
+            crate::menus::finish_window_action,
             snapshot,
             check_model_updates,
             confirm_discard,
@@ -1328,10 +1346,22 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("Impossible de démarrer ELPOTRANSCRIBE")
         .run(|app, event| {
-            if matches!(
-                event,
-                tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit
-            ) {
+            if let tauri::RunEvent::ExitRequested { api, .. } = &event {
+                let session = app.state::<crate::menus::MenuSession>();
+                if session.ready.load(std::sync::atomic::Ordering::SeqCst)
+                    && !session
+                        .allow_exit
+                        .swap(false, std::sync::atomic::Ordering::SeqCst)
+                {
+                    api.prevent_exit();
+                    crate::menus::dispatch(app, "quit");
+                    return;
+                }
+                if let Some(state) = app.try_state::<AppState>() {
+                    state.shutdown();
+                }
+            }
+            if matches!(event, tauri::RunEvent::Exit) {
                 if let Some(state) = app.try_state::<AppState>() {
                     state.shutdown();
                 }

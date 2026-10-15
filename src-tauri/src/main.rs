@@ -1,6 +1,8 @@
 mod benchmark;
 #[cfg(target_os = "macos")]
 mod desktop;
+#[cfg(target_os = "macos")]
+mod menus;
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().is_some_and(|arg| arg == "--bench-local") {

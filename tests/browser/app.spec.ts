@@ -18,10 +18,21 @@ test("interface française vide et fonctions natives explicitement indiquées", 
 test("seuls Ultra et Whisper Turbo sont proposés", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Modèles IA", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Parakeet Ultra", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Whisper large-v3-turbo Q5_0", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Installer Parakeet Ultra" })).toBeEnabled();
-  await expect(page.getByRole("button", { name: /^Installer / })).toHaveCount(2);
+  await expect(
+    page.getByRole("heading", { name: "Parakeet Ultra", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: "Whisper large-v3-turbo Q5_0",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Installer Parakeet Ultra" }),
+  ).toBeEnabled();
+  await expect(page.getByRole("button", { name: /^Installer / })).toHaveCount(
+    2,
+  );
 });
 test("éditeur : modification, annulation et export par le pont natif simulé", async ({
   page,
@@ -460,4 +471,163 @@ test("un résultat terminé disparaît immédiatement du lot sans Nouveau lot", 
   );
   expect(commands).toContain("remove_job");
   expect(commands).not.toContain("archive_completed");
+});
+
+// Custom menu dispatch is simulated here. These are not AppKit/menu accelerator tests.
+async function menuAction(
+  page: import("@playwright/test").Page,
+  action: string,
+) {
+  await page.evaluate(
+    (action) =>
+      window.dispatchEvent(
+        new CustomEvent("elpo-menu-action", { detail: action }),
+      ),
+    action,
+  );
+}
+test("menus : réglages, import existant et repli de la barre latérale", async ({
+  page,
+}) => {
+  await localReviewFixture(page);
+  await menuAction(page, "sidebar");
+  await expect(page.locator("aside.sidebar")).toBeHidden();
+  await page
+    .getByRole("button", { name: "Afficher la barre latérale", exact: true })
+    .click();
+  await expect(page.locator("aside.sidebar")).toBeVisible();
+  await menuAction(page, "settings");
+  await expect(
+    page.getByRole("heading", { name: "Paramètres", exact: true }),
+  ).toBeVisible();
+  await menuAction(page, "import-folder");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as unknown as {
+              __TEST_CALLS__: Array<{ command: string; args: unknown }>;
+            }
+          ).__TEST_CALLS__.find((c) => c.command === "import_files")?.args,
+      ),
+    )
+    .toEqual({ folder: true });
+});
+test("menus : même pile d’annulation, recherche et export que l’éditeur", async ({
+  page,
+}) => {
+  await localReviewFixture(page);
+  await page.getByRole("button", { name: "Ouvrir", exact: true }).click();
+  const cue = page.getByLabel("Sous-titre 1", { exact: true });
+  await cue.fill("Nous sortons ce soir.");
+  await menuAction(page, "undo");
+  await expect(cue).toHaveValue("Je vais sortir ce foir.");
+  await menuAction(page, "redo");
+  await expect(cue).toHaveValue("Nous sortons ce soir.");
+  await page.keyboard.press("Control+z");
+  await expect(cue).toHaveValue("Je vais sortir ce foir.");
+  await page.keyboard.press("Control+Shift+z");
+  await expect(cue).toHaveValue("Nous sortons ce soir.");
+  await menuAction(page, "find");
+  await expect(page.getByLabel("Rechercher", { exact: true })).toBeFocused();
+  await menuAction(page, "export");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as unknown as {
+              __TEST_CALLS__: Array<{ command: string; args: unknown }>;
+            }
+          ).__TEST_CALLS__.find((c) => c.command === "export_job")?.args,
+      ),
+    )
+    .toEqual({ id: "review-fixture", format: "srt", original: false });
+  await expect(page.getByLabel("Début 1", { exact: true })).toHaveValue(
+    "00:00:00,100",
+  );
+  await expect(page.getByLabel("Fin 1", { exact: true })).toHaveValue(
+    "00:00:02,500",
+  );
+});
+test("menu Fermer : refuser la perte d’édition conserve la fenêtre et le texte", async ({
+  page,
+}) => {
+  await localReviewFixture(page);
+  await page.getByRole("button", { name: "Ouvrir", exact: true }).click();
+  await page.getByLabel("Sous-titre 1", { exact: true }).fill("À conserver.");
+  await page.evaluate(() => Object.assign(window, { __TEST_CONFIRM__: false }));
+  await menuAction(page, "close");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as unknown as { __TEST_CALLS__: Array<{ command: string }> }
+          ).__TEST_CALLS__.filter((c) => c.command === "confirm_action").length,
+      ),
+    )
+    .toBe(1);
+  const calls = await page.evaluate(
+    () =>
+      (window as unknown as { __TEST_CALLS__: Array<{ command: string }> })
+        .__TEST_CALLS__,
+  );
+  expect(calls.some((c) => c.command === "finish_window_action")).toBe(false);
+  await expect(page.getByLabel("Sous-titre 1", { exact: true })).toHaveValue(
+    "À conserver.",
+  );
+});
+test("menu Quitter : un traitement exige une confirmation explicite", async ({
+  page,
+}) => {
+  await localReviewFixture(page);
+  await page.evaluate(async () => {
+    const native = (
+      window as unknown as {
+        __TAURI_INTERNALS__: {
+          invoke: (command: string, args: object) => Promise<{ busy: boolean }>;
+        };
+      }
+    ).__TAURI_INTERNALS__;
+    (await native.invoke("snapshot", {})).busy = true;
+    Object.assign(window, { __TEST_CONFIRM__: false });
+  });
+  await expect(
+    page.getByRole("button", { name: "Traitement en cours…", exact: true }),
+  ).toBeDisabled();
+  await menuAction(page, "quit");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as unknown as { __TEST_CALLS__: Array<{ command: string }> }
+          ).__TEST_CALLS__.filter((c) => c.command === "confirm_action").length,
+      ),
+    )
+    .toBe(1);
+  expect(
+    await page.evaluate(() =>
+      (
+        window as unknown as { __TEST_CALLS__: Array<{ command: string }> }
+      ).__TEST_CALLS__.some((c) => c.command === "finish_window_action"),
+    ),
+  ).toBe(false);
+  await page.evaluate(() => Object.assign(window, { __TEST_CONFIRM__: true }));
+  await menuAction(page, "quit");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as unknown as {
+              __TEST_CALLS__: Array<{ command: string; args: unknown }>;
+            }
+          ).__TEST_CALLS__.find((c) => c.command === "finish_window_action")
+            ?.args,
+      ),
+    )
+    .toEqual({ quit: true });
 });

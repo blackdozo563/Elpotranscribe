@@ -6,7 +6,8 @@ cleanup() { hdiutil detach "$mount_dir" -quiet || true; rmdir "$mount_dir" || tr
 trap cleanup EXIT
 hdiutil verify "$image"
 hdiutil attach "$image" -readonly -nobrowse -mountpoint "$mount_dir" -quiet
-app="$mount_dir/ELPOTRANSCRIBE.app"
+product_name="$(python3 -c 'import json; print(json.load(open("src-tauri/tauri.conf.json"))["productName"])')"
+app="$mount_dir/$product_name.app"
 test -L "$mount_dir/Applications"
 expected_version="$(python3 -c 'import json; print(json.load(open("src-tauri/tauri.conf.json"))["version"])')"
 actual_version="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Contents/Info.plist")"

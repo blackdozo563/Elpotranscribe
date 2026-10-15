@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke, convertFileSrc, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { findMatches, replaceMatches } from "./search";
 import Vocabulary from "./Vocabulary";
+import {
+  connectNativeMenu,
+  menuEvent,
+  editorMenuEvent,
+  type MenuAction,
+  type EditorMenuContext,
+} from "./nativeMenu";
 import { nearMisses } from "./profileReview";
 import {
   AudioLines,
@@ -25,6 +31,7 @@ import {
   Check,
   FileAudio,
   ChevronRight,
+  PanelLeft,
   Save,
   Undo2,
   Redo2,
@@ -107,8 +114,17 @@ export default function App() {
     [operation, setOperation] = useState<string | null>(null),
     [selected, setSelected] = useState<Job | null>(null);
   const profileGuard = useRef<(() => Promise<boolean>) | null>(null);
+  const [sidebarHidden, setSidebarHidden] = useState(false);
+  const [editorMenu, setEditorMenu] = useState<EditorMenuContext>({
+    canUndo: false,
+    canRedo: false,
+    canExport: false,
+  });
   const navigate = async (target: number) => {
-    if ((await profileGuard.current?.()) !== false) setPage(target);
+    if ((await profileGuard.current?.()) === false) return false;
+    setSelected(null);
+    setPage(target);
+    return true;
   };
   const desktop = isTauri() || "__TAURI_INTERNALS__" in window;
   const refresh = useCallback(async () => {
@@ -215,8 +231,88 @@ export default function App() {
   const completed = batch.filter((j) => j.status === "completed").length;
   const pending = batch.filter((j) => j.status === "pending").length;
   const failed = batch.filter((j) => j.status === "failed").length;
+  const menuHandler = useRef<(action: MenuAction) => Promise<void>>(
+    async () => {},
+  );
+  const closing = useRef(false);
+  menuHandler.current = async (command) => {
+    if (command === "close" || command === "quit") {
+      if (closing.current) return;
+      closing.current = true;
+      try {
+        if ((await profileGuard.current?.()) === false) return;
+        if (
+          data.busy &&
+          (await action("confirm_action", {
+            message:
+              "Un traitement est en cours. L’arrêter et " +
+              (command === "quit"
+                ? "quitter Elpotranscribe ?"
+                : "fermer la fenêtre ?"),
+          })) !== true
+        )
+          return;
+        await action("finish_window_action", { quit: command === "quit" });
+      } finally {
+        closing.current = false;
+      }
+    } else if (command === "sidebar") setSidebarHidden((value) => !value);
+    else if (command === "settings") await navigate(5);
+    else if (["new", "import-audio", "import-folder"].includes(command)) {
+      if (data.busy || working || batch.length >= 10) return;
+      if (await navigate(1))
+        await action("import_files", { folder: command === "import-folder" });
+    } else if (selected) {
+      window.dispatchEvent(
+        new CustomEvent(editorMenuEvent, { detail: command }),
+      );
+    }
+  };
+  useEffect(() => {
+    const handler = (event: Event) => {
+      void menuHandler
+        .current((event as CustomEvent<MenuAction>).detail)
+        .catch((e) => setError(String(e)));
+    };
+    window.addEventListener(menuEvent, handler);
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    if (desktop)
+      void connectNativeMenu()
+        .then((fn) => {
+          if (disposed) fn();
+          else unlisten = fn;
+        })
+        .catch((e) => setError(String(e)));
+    return () => {
+      disposed = true;
+      unlisten?.();
+      window.removeEventListener(menuEvent, handler);
+    };
+  }, [desktop]);
+  useEffect(() => {
+    if (!desktop) return;
+    void invoke("sync_menu_context", {
+      context: {
+        editor: !!selected,
+        canUndo: !!selected && editorMenu.canUndo,
+        canRedo: !!selected && editorMenu.canRedo,
+        canExport: !!selected && editorMenu.canExport && !data.busy && !working,
+        canImport: !data.busy && !working && batch.length < 10,
+      },
+    }).catch((e) => setError(String(e)));
+  }, [
+    desktop,
+    !!selected,
+    editorMenu.canUndo,
+    editorMenu.canRedo,
+    editorMenu.canExport,
+    data.busy,
+    working,
+    batch.length,
+  ]);
   return (
-    <div className="shell">
+    <div className={`shell${sidebarHidden ? " sidebar-hidden" : ""}`}>
       <aside className="sidebar">
         <div className="brand">
           <span className="brandmark">
@@ -270,7 +366,18 @@ export default function App() {
         </div>
       </aside>
       <main>
-        <header className="topbar">
+        <header className="topbar" data-tauri-drag-region>
+          <button
+            aria-label={
+              sidebarHidden
+                ? "Afficher la barre latérale"
+                : "Masquer la barre latérale"
+            }
+            aria-expanded={!sidebarHidden}
+            onClick={() => setSidebarHidden((value) => !value)}
+          >
+            <PanelLeft size={17} />
+          </button>
           <span>
             Espace de travail <ChevronRight size={14} />{" "}
             <strong>{navigation[page]}</strong>
@@ -337,6 +444,8 @@ export default function App() {
                 null
               }
               job={selected}
+              guard={profileGuard}
+              onMenuContext={setEditorMenu}
               action={action}
               close={() => {
                 setSelected(null);
@@ -1322,7 +1431,11 @@ function Editor({
   job,
   action,
   close,
+  guard,
+  onMenuContext,
 }: {
+  guard: React.MutableRefObject<(() => Promise<boolean>) | null>;
+  onMenuContext: (context: EditorMenuContext) => void;
   job: Job;
   profile: VocabularyProfile | null;
   action: (command: string, args?: Record<string, unknown>) => Promise<unknown>;
@@ -1385,6 +1498,12 @@ function Editor({
         event.preventDefault();
         setSearchOpen(true);
         searchInput.current?.focus();
+      } else if (
+        (event.metaKey || event.ctrlKey) &&
+        event.key.toLowerCase() === "z"
+      ) {
+        event.preventDefault();
+        setState(event.shiftKey ? redo : undo);
       } else if (event.key === "Escape") setSearchOpen(false);
     };
     window.addEventListener("keydown", shortcut);
@@ -1418,19 +1537,49 @@ function Editor({
       setError(String(e));
     }
   };
+  useEffect(() => {
+    const mayLeave = async () =>
+      !dirty ||
+      (await action("confirm_action", {
+        message: "Quitter sans enregistrer vos modifications ?",
+      })) === true;
+    guard.current = mayLeave;
+    return () => {
+      if (guard.current === mayLeave) guard.current = null;
+    };
+  }, [dirty, action, guard]);
   const leave = () => {
-    if (!dirty) {
-      close();
-      return;
-    }
-    void action("confirm_action", {
-      message: "Quitter sans enregistrer vos modifications ?",
-    })
-      .then((confirmed) => {
-        if (confirmed === true) close();
-      })
-      .catch((e) => setError(String(e)));
+    void (async () => {
+      if ((await guard.current?.()) !== false) close();
+    })().catch((e) => setError(String(e)));
   };
+  let exportable = true;
+  try {
+    validate(state.present);
+  } catch {
+    exportable = false;
+  }
+  useEffect(() => {
+    onMenuContext({
+      canUndo: !!state.past.length,
+      canRedo: !!state.future.length,
+      canExport: exportable,
+    });
+  }, [state.past.length, state.future.length, exportable, onMenuContext]);
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const command = (event as CustomEvent<MenuAction>).detail;
+      if (command === "undo") setState(undo);
+      if (command === "redo") setState(redo);
+      if (command === "find") {
+        setSearchOpen(true);
+        searchInput.current?.focus();
+      }
+      if (command === "export" && exportable) void exportFile("srt", false);
+    };
+    window.addEventListener(editorMenuEvent, handler);
+    return () => window.removeEventListener(editorMenuEvent, handler);
+  });
   useEffect(() => {
     const before = (event: BeforeUnloadEvent) => {
       if (dirty) {
@@ -1440,31 +1589,6 @@ function Editor({
     };
     window.addEventListener("beforeunload", before);
     return () => window.removeEventListener("beforeunload", before);
-  }, [dirty]);
-  useEffect(() => {
-    if (!(isTauri() || "__TAURI_INTERNALS__" in window)) return;
-    let disposed = false;
-    let unlisten: (() => void) | undefined;
-    getCurrentWindow()
-      .onCloseRequested(async (event) => {
-        if (!dirty) return;
-        event.preventDefault();
-        try {
-          if (await invoke<boolean>("confirm_discard"))
-            await getCurrentWindow().destroy();
-        } catch (error) {
-          setError(String(error));
-        }
-      })
-      .then((fn) => {
-        if (disposed) fn();
-        else unlisten = fn;
-      })
-      .catch((error) => setError(String(error)));
-    return () => {
-      disposed = true;
-      unlisten?.();
-    };
   }, [dirty]);
   const active = state.present.findIndex(
     (c) => c.startMs <= position && c.endMs > position,

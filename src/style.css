@@ -1111,3 +1111,33 @@ input[type="checkbox"] {
   flex-wrap: wrap;
   margin: 12px 0;
 }
+
+/* Phase 2: native titlebar overlay. Visual tokens are consolidated in phase 3. */
+:root {
+  background: transparent;
+}
+.sidebar {
+  background: transparent;
+  padding-top: 64px;
+}
+.topbar {
+  height: 52px;
+}
+.topbar > button {
+  min-height: 28px;
+  padding: 4px 7px;
+  margin-right: 12px;
+}
+main {
+  background: #10101b;
+  min-height: 100vh;
+}
+.sidebar-hidden .sidebar {
+  display: none;
+}
+.sidebar-hidden main {
+  margin-left: 0;
+}
+.sidebar-hidden .topbar {
+  padding-left: 92px;
+}

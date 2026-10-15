@@ -110,11 +110,11 @@ jobs:
           image="$(find target/aarch64-apple-darwin/release/bundle/dmg -name '*_1.2.0_aarch64.dmg' -print -quit)"
           test -n "$image"
           bash scripts/validate-dmg.sh "$image"
-          cp "$image" release/ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.2.0.dmg
+          cp "$image" release/Elpotranscribe-macOS-Apple-Silicon-v1.2.0.dmg
           shasum -a 256 release/*.dmg > release/SHA256SUMS.txt
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.2.0
+          name: Elpotranscribe-macOS-Apple-Silicon-v1.2.0
           path: release/*
           if-no-files-found: error
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -153,7 +153,7 @@ jobs:
           key: macos-arm64-${{ hashFiles('Cargo.lock', 'native/swift/Package.swift') }}-${{ github.run_id }}
       - uses: actions/download-artifact@v4
         with:
-          name: ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.2.0
+          name: Elpotranscribe-macOS-Apple-Silicon-v1.2.0
           path: release
       - name: Long French validation (does not block publication)
         run: |
@@ -171,7 +171,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: ELPOTRANSCRIBE-macOS-Apple-Silicon-v1.2.0
+          name: Elpotranscribe-macOS-Apple-Silicon-v1.2.0
           path: release
       - name: Publish validated personal-use build
         env:

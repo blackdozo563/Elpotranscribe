@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "ELPOTRANSCRIBE",
+  "productName": "Elpotranscribe",
   "version": "1.2.0",
   "identifier": "com.elpo.elpotranscribe",
   "build": {
@@ -12,12 +12,26 @@
   "app": {
     "windows": [
       {
-        "title": "ELPOTRANSCRIBE",
+        "title": "Elpotranscribe",
         "width": 1280,
         "height": 860,
         "minWidth": 960,
         "minHeight": 650,
-        "backgroundColor": "#10101c"
+        "backgroundColor": "#00000000",
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "decorations": true,
+        "trafficLightPosition": {
+          "x": 16,
+          "y": 18
+        },
+        "transparent": true,
+        "windowEffects": {
+          "effects": [
+            "sidebar"
+          ],
+          "state": "followsWindowActiveState"
+        }
       }
     ],
     "security": {
@@ -26,7 +40,8 @@
         "enable": true,
         "scope": []
       }
-    }
+    },
+    "macOSPrivateApi": true
   },
   "bundle": {
     "active": true,
