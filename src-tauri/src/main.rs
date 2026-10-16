@@ -5,6 +5,8 @@ mod desktop;
 mod download_progress;
 #[cfg(any(target_os = "macos", test))]
 mod history;
+#[cfg(any(target_os = "macos", test))]
+mod inference_progress;
 #[cfg(target_os = "macos")]
 mod menus;
 #[cfg(any(target_os = "macos", test))]

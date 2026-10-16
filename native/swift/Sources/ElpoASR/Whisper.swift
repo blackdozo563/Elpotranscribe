@@ -69,6 +69,7 @@ final class WhisperTokens {
 }
 
 final class WhisperOutput {
+    var progress: InferenceProgress?
     let tokens = WhisperTokens()
     var segments: [Word] = []
     var needsNext = false
@@ -118,12 +119,16 @@ func transcribeWhisper(root: URL, engine: String, source: String, language: Stri
     guard manifest.sdk == whisperRevision, manifest.files == (try modelHashes(directory)) else { throw Failure(message: "Intégrité Whisper incorrecte. Réinstallez le modèle.") }
     let temporary = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".f32")
     defer { try? FileManager.default.removeItem(at: temporary) }
+    let progress = InferenceProgress(engine: engine)
+    progress.report(phase: "preparing")
     let started = Date()
     let count = try floatAudio(URL(fileURLWithPath: source), destination: temporary)
     guard count <= Int32.max else { throw Failure(message: "Audio trop long pour cette version Whisper ; divisez le fichier.") }
     let audio = try Data(contentsOf: temporary, options: .alwaysMapped)
     var promptCount: Int32 = 0; var promptUsed: Int32 = 0; var promptLimit: Int32 = 224
     let output = WhisperOutput()
+    output.progress = progress
+    progress.report(phase: "loading")
     let status = audio.withUnsafeBytes { samples in
         directory.appendingPathComponent("model.bin").path.withCString { model in
             (language ?? "auto").withCString { code in
@@ -134,6 +139,9 @@ func transcribeWhisper(root: URL, engine: String, source: String, language: Stri
                 }, { user, text, length, start, end in
                     guard let user, let text else { return }
                     Unmanaged<WhisperOutput>.fromOpaque(user).takeUnretainedValue().appendSegment(Data(bytes: text, count: Int(length)), start: start, end: end)
+                }, { user, percent in
+                    guard let user else { return }
+                    Unmanaged<WhisperOutput>.fromOpaque(user).takeUnretainedValue().progress?.report(phase: "transcribing", percent: Int(percent))
                 }, Unmanaged.passUnretained(output).toOpaque())
                 }
             }

@@ -247,7 +247,7 @@ test("À relire : état vide sans ancien formulaire et feuille sans source", asy
     page.getByRole("button", { name: "Transcrire et comparer", exact: true }),
   ).toBeDisabled();
   await expect(
-    page.getByText("Transcrivez d’abord un audio dans la bibliothèque.", {
+    page.getByText("Importez un audio dans la bibliothèque pour commencer.", {
       exact: true,
     }),
   ).toBeVisible();

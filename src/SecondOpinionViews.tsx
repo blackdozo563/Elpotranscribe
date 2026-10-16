@@ -29,7 +29,7 @@ export function SecondOpinionSheet({
   start: (id: string, primary: string, secondary: string) => Promise<void>;
 }) {
   const sources = data.jobs.filter(
-    (j) => j.status === "completed" && j.cues.length,
+    (j) => ["pending", "completed", "failed", "cancelled"].includes(j.status),
   );
   const [source, setSource] = useState(sourceId || sources[0]?.id || "");
   const [pair, setPair] = useState(() =>
@@ -88,7 +88,7 @@ export function SecondOpinionSheet({
           onChange={(event) => setSource(event.target.value)}
         >
           {!sources.length && (
-            <option value="">Aucune transcription terminée</option>
+            <option value="">Aucun audio importé</option>
           )}
           {sources.map((j) => (
             <option key={j.id} value={j.id}>
@@ -155,7 +155,7 @@ export function SecondOpinionSheet({
         </label>
       </div>
       {!sources.length && (
-        <p>Transcrivez d’abord un audio dans la bibliothèque.</p>
+        <p>Importez un audio dans la bibliothèque pour commencer.</p>
       )}
       {available.length < 2 && (
         <p>
@@ -236,6 +236,12 @@ export function ReviewInbox({
           <div className="opinion-progress" key={job.id}>
             <strong>{job.name}</strong>
             <span role="status">{opinionStage(job)}</span>
+            {data.inferenceProgress?.jobId === job.id && data.inferenceProgress.percent != null && (
+              <div className="transcription-progress">
+                <span>{opinionEngineName(data.inferenceProgress.engine)} : {data.inferenceProgress.percent} %</span>
+                <progress aria-label="Audio traité par le moteur de vérification" max={100} value={data.inferenceProgress.percent} />
+              </div>
+            )}
             <span className="mono">
               {elapsed
                 ? `Temps écoulé : ${elapsed}`

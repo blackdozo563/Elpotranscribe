@@ -3,6 +3,16 @@
 
 
 
+## Correction 1.3.1 — navigation et suivi (16 octobre 2026)
+
+Correction demandée après essai réel du DMG 1.3.0 par l’utilisateur : navigation de 44 px/texte 15 px, nouvelle transcription et double vérification en accès direct, Réglages et version en pied de barre. Compteurs du lot toujours visibles, réglages de transcription explicitement nommés, conflit d’export replié en avertissement sans changer le statut terminé. Bleu pour le traitement, vert pour le résultat terminé, en thèmes clair et sombre. Les audios importés peuvent de nouveau servir directement à la double vérification ; le backend existant le permettait déjà.
+
+Progression : callback `whisper_full_params.progress_callback` pour Turbo ; nombre de fenêtres réellement décodées, dédupliquées et rapportées par `AsrManager.setWindowHandler` du SDK épinglé pour Ultra. JSON atomique éphémère par processus ; Rust contrôle moteur, phase, bornes et rattache au travail actif. Remise à zéro entre moteurs/processus. Chargement et audio sans compteur restent indéterminés ; 100 % traité précède éventuellement la finalisation. Aucune interpolation temporelle, aucun changement des paramètres de reconnaissance ni des horodatages.
+
+Preuves portables : build TypeScript/Vite, 41 tests Vitest, 57 scénarios navigateur réussis, 37 tests du cœur Rust et 15 tests Rust applicatifs, Clippy cœur/application. Les nouveaux scénarios `tests/browser/stabilization.spec.ts` couvrent disposition, commandes, pourcentage observé et absence de pourcentage de chargement, couleurs distinctes, choix de source avant transcription et avertissement d’export. Captures de rendu sous `.ui-captures/correction-1.3.1/` (non versionnées, IPC simulé).
+
+Deux XCTest ajoutés dans `InferenceProgressTests.swift` couvrent fenêtres hors ordre/doublons, progression monotone et valeurs invalides ; exécution macOS requise. Le contrôle `smoke-release.py` exige maintenant un document de progression émis par le helper empaqueté et un pourcentage réel sur Turbo et sur l’audio Ultra de plus de quinze secondes ; la fixture française reste limitée à 90 secondes. Compilation, tests Swift et validation du DMG à confirmer par la CI avant publication. Aucun essai de cette correction sur M2 8 Go physique revendiqué.
+
 ## Livraison 1.3.0 — DMG natif publié et téléchargement vérifié (16 octobre 2026)
 
 [Préversion](https://github.com/blackdozo563/Elpotranscribe/releases/tag/v1.3.0) · [DMG Apple Silicon](https://github.com/blackdozo563/Elpotranscribe/releases/download/v1.3.0/Elpotranscribe-macOS-Apple-Silicon-v1.3.0.dmg) · [build macOS réussi](https://github.com/blackdozo563/Elpotranscribe/actions/runs/38863774305). Source du tag `v1.3.0` : `52e50bc954` (voir le commit complet dans Git). Taille téléchargée : **6487007 octets**. SHA-256 recalculé sur le fichier intégral et identique à `SHA256SUMS.txt` :

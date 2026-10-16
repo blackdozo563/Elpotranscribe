@@ -689,7 +689,7 @@ test("contrôles compacts : sélecteur natif de transcription", async ({
   ).toBe("none");
 });
 
-test("échelle à 1280 × 800 : boutons sur une ligne et barre d’outils de 52 px", async ({
+test("échelle à 1280 × 800 : boutons sur une ligne et navigation lisible et barre d’outils de 52 px", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -740,7 +740,7 @@ test("échelle à 1280 × 800 : boutons sur une ligne et barre d’outils de 52 
       await page
         .getByRole("button", { name: "Vocabulaire", exact: true })
         .evaluate((element) => element.getBoundingClientRect().height),
-    ).toBe(28);
+    ).toBe(44);
   }
 });
 

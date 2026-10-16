@@ -2,7 +2,7 @@ import type { Job, Settings } from "./domain";
 export type LibrarySort = "name" | "duration" | "engine" | "date" | "status";
 export const statusLabels: Record<string, string> = {
   pending: "En attente",
-  transcribing: "Transcription",
+  transcribing: "En cours",
   completed: "Terminé",
   failed: "Erreur",
   cancelled: "Annulé",

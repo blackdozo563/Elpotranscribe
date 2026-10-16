@@ -91,6 +91,8 @@ let ultraSDKFolderName = Repo.parakeetUltra.folderName
             }
             ModelHub.offlineMode = true
             if let source = manifest.sources?.first { ModelRegistry.revisionOverrides = [source.repository: source.revision] }
+            let progress = InferenceProgress(engine: engine)
+            progress.report(phase: "loading")
             let models = try await AsrModels.load(from: directory, version: .ultra)
             let manager = AsrManager(); try await manager.loadModels(models)
             var decoder = try TdtDecoderState(decoderLayers: AsrModelVersion.ultra.decoderLayers)
@@ -99,6 +101,10 @@ let ultraSDKFolderName = Repo.parakeetUltra.folderName
                 guard ["fr", "en", "es", "de", "it", "pt"].contains(code), let value = Language(rawValue: code) else { throw Failure(message: "Langue non prise en charge par ce moteur") }
                 language = value
             } else { language = nil }
+            await manager.setWindowHandler { window in
+                progress.windowFinished(index: window.index, total: window.windowCount)
+            }
+            progress.report(phase: "transcribing")
             // Disk-backed processing bounds memory for long recordings; the SDK preserves chunk offsets.
             let result = try await manager.transcribeDiskBacked(URL(fileURLWithPath: source), decoderState: &decoder, language: language)
             let timings = buildWordTimings(from: result.tokenTimings ?? [])

@@ -29,6 +29,7 @@ struct Snapshot {
     settings_revision: u64,
     review_pending_total: usize,
     download_progress: Option<crate::download_progress::DownloadProgress>,
+    inference_progress: Option<crate::inference_progress::InferenceProgress>,
 }
 #[derive(Default)]
 struct Runtime {
@@ -38,6 +39,7 @@ struct Runtime {
     temporary: Option<tempfile::TempDir>,
     shutting_down: bool,
     download_progress: Option<crate::download_progress::DownloadProgress>,
+    inference_progress: Option<crate::inference_progress::InferenceProgress>,
 }
 struct Inner {
     store: Mutex<Store>,
@@ -170,6 +172,12 @@ impl AppState {
             .and_then(|v| v.as_str())
             .filter(|a| *a == "install")
             .and_then(|_| request.get("engine").and_then(|v| v.as_str()));
+        let inference_engine = request
+            .get("action")
+            .and_then(|v| v.as_str())
+            .filter(|a| *a == "transcribe")
+            .and_then(|_| request.get("engine").and_then(|v| v.as_str()));
+        let mut inference_path = None;
         let mut progress_path = None;
         {
             let mut r = self.data.runtime.lock().map_err(err)?;
@@ -196,6 +204,11 @@ impl AppState {
                 .tempdir()
                 .map_err(err)?;
             let progress_file = temporary.path().join("install-progress.json");
+            let inference_file = temporary.path().join("inference-progress.json");
+            r.inference_progress = None;
+            if inference_engine.is_some() && id.is_some() {
+                inference_path = Some(inference_file.clone());
+            }
             if install_engine.is_some() {
                 progress_path = Some(progress_file.clone());
                 r.download_progress = None;
@@ -204,6 +217,7 @@ impl AppState {
             let mut child = Command::new(helper)
                 .env("TMPDIR", temporary.path())
                 .env("ELPO_INSTALL_PROGRESS", &progress_file)
+                .env("ELPO_INFERENCE_PROGRESS", &inference_file)
                 .stdin(Stdio::piped())
                 .stdout(Stdio::from(out.reopen().map_err(err)?))
                 .stderr(Stdio::from(stderr.reopen().map_err(err)?))
@@ -240,6 +254,11 @@ impl AppState {
                     self.data.runtime.lock().map_err(err)?.download_progress = Some(progress);
                 }
             }
+            if let (Some(path), Some(engine), Some(id)) = (&inference_path, inference_engine, id) {
+                if let Some(progress) = crate::inference_progress::read(path, engine, id) {
+                    self.data.runtime.lock().map_err(err)?.inference_progress = Some(progress);
+                }
+            }
             std::thread::sleep(Duration::from_millis(100));
         };
         {
@@ -247,6 +266,7 @@ impl AppState {
             r.child.take();
             r.temporary.take();
             r.active = None;
+            r.inference_progress = None;
         }
         let mut text = String::new();
         out.reopen()
@@ -264,9 +284,13 @@ impl AppState {
         Ok(value)
     }
     fn snapshot(&self) -> Result<Snapshot, String> {
-        let (busy, download_progress) = {
+        let (busy, download_progress, inference_progress) = {
             let runtime = self.data.runtime.lock().map_err(err)?;
-            (runtime.busy, runtime.download_progress.clone())
+            (
+                runtime.busy,
+                runtime.download_progress.clone(),
+                runtime.inference_progress.clone(),
+            )
         };
         let s = self.data.store.lock().map_err(err)?;
         Ok(Snapshot {
@@ -277,6 +301,7 @@ impl AppState {
             settings_revision: s.settings_revision,
             busy,
             download_progress,
+            inference_progress,
             model_installed: self.installed(&s.settings.engine),
             installed_models: ["ultra", "whisper-turbo"]
                 .into_iter()
@@ -352,6 +377,7 @@ impl AppState {
             r.busy = false;
             r.download_progress = None;
             r.active = None;
+            r.inference_progress = None;
         }
     }
 }

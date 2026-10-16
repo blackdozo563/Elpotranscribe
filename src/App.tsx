@@ -86,8 +86,9 @@ const navigation = [
   "Modèles IA",
   "Paramètres",
   "Vocabulaire",
+  "Double vérification",
 ];
-const icons = [LibraryBig, Plus, History, ScanText, Boxes, Settings2, BookOpen];
+const icons = [LibraryBig, Plus, History, ScanText, Boxes, Settings2, BookOpen, ScanText];
 const localEngines = [
   { id: "ultra", name: "Parakeet Ultra", disabled: false },
   { id: "whisper-turbo", name: "Whisper large-v3-turbo Q5_0", disabled: false },
@@ -434,21 +435,24 @@ export default function App() {
         <nav
           style={
             {
-              "--nav-index": Math.max(0, [0, 3, 6, 4].indexOf(page)),
+              "--nav-index": Math.max(0, [0, 1, 7, 3, 6, 4].indexOf(page)),
             } as React.CSSProperties
           }
         >
           <span className="nav-selection" aria-hidden="true" />
-          {[0, 3, 6, 4].map((i) => {
+          {[0, 1, 7, 3, 6, 4].map((i) => {
             const label = navigation[i];
             const Icon = icons[i];
             return (
               <Button
                 key={label}
-                aria-label={label}
+                aria-label={i === 1 ? "Importer un nouvel audio" : label}
+                disabled={(i === 1 || i === 7) && (data.busy || working || (i === 1 && batch.length >= 10))}
                 className={page === i ? "nav active" : "nav"}
                 onClick={() => {
-                  void navigate(i).catch((e) => setError(String(e)));
+                  if (i === 1) void menuHandler.current("new").catch((e) => setError(String(e)));
+                  else if (i === 7) requestOpinion();
+                  else void navigate(i).catch((e) => setError(String(e)));
                 }}
               >
                 <Icon size={18} />
@@ -460,6 +464,12 @@ export default function App() {
             );
           })}
         </nav>
+        <footer className="sidebar-footer">
+          <Button className="nav" onClick={() => { void action("open_settings").catch((e) => setError(String(e))); }}>
+            <Settings2 size={20} />Réglages <kbd>⌘,</kbd>
+          </Button>
+          <small>ELPOTRANSCRIBE · {__APP_VERSION__}</small>
+        </footer>
       </aside>
       <main>
         <header className="topbar" data-tauri-drag-region>

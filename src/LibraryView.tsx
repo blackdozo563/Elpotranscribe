@@ -92,7 +92,7 @@ export default function Library({
       },
       {
         text: "Demander un second avis",
-        enabled: !disabled && !!job.cues.length && job.status === "completed",
+        enabled: !disabled && job.status !== "transcribing",
         action: () => onSecondOpinion(job),
       },
       {
@@ -109,6 +109,8 @@ export default function Library({
       },
     ]).catch((error) => onError(String(error)));
   };
+  const finished = batch.filter((j) => j.status === "completed").length;
+  const active = batch.find((j) => j.status === "transcribing");
   const profile =
     data.profiles?.find((p) => p.id === data.settings.selectedProfileId)
       ?.name ?? "Aucun profil";
@@ -153,7 +155,7 @@ export default function Library({
             aria-expanded={settingsOpen}
             onClick={() => setSettingsOpen((open) => !open)}
           >
-            <span>{summary}</span>
+            <span>Réglages : {summary}</span>
           </Button>
           <Popover
             open={settingsOpen}
@@ -165,6 +167,11 @@ export default function Library({
           </Popover>
         </div>
       </div>
+      <div className="batch-summary" aria-label="Résumé du lot">
+        <span>{number(batch.length)} / 10 fichiers dans le lot</span>
+        <span>{number(finished)} terminé(s)</span>
+        <span>{number(pending)} en attente</span>
+      </div>
       {batch.length >= 8 && (
         <p className="batch-limit">
           {number(batch.length)} / {number(10)} fichiers dans le lot. Limite de
@@ -172,6 +179,18 @@ export default function Library({
           des places.
         </p>
       )}
+      {active && <section className="transcription-progress" aria-label="Progression de la transcription">
+        <strong>En cours : {active.name}</strong>
+        <span role="status">{data.inferenceProgress?.jobId === active.id
+          ? data.inferenceProgress.phase === "loading" ? "Chargement du modèle…"
+            : data.inferenceProgress.phase === "preparing" ? "Préparation de l’audio…"
+            : data.inferenceProgress.percent != null ? data.inferenceProgress.percent === 100 ? "Audio traité : 100 % — finalisation…" : `Transcription : ${data.inferenceProgress.percent} %` : "Transcription en cours…"
+          : "Préparation du moteur…"}</span>
+        {data.inferenceProgress?.jobId === active.id && data.inferenceProgress.percent != null
+          ? <progress aria-label="Audio traité par le moteur" max={100} value={data.inferenceProgress.percent} />
+          : <progress aria-label="Traitement en cours, pourcentage indisponible" />}
+        <Button onClick={() => run("cancel_job", { id: active.id })}>Arrêter la transcription</Button>
+      </section>}
       {(pending > 0 || data.busy) && (
         <div className="button-row library-run">
           <Button
@@ -277,7 +296,10 @@ export default function Library({
                             : ""}
                         </small>
                         {job.error && (
-                          <small className="job-error">{job.error}</small>
+                          <details className={job.status === "completed" ? "export-warning" : "job-error"}>
+                            <summary>{job.status === "completed" ? "SRT à enregistrer — voir le détail" : "Voir l’erreur"}</summary>
+                            <small>{job.error}</small>
+                          </details>
                         )}
                       </div>
                     </td>

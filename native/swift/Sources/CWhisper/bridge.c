@@ -35,9 +35,15 @@ int elpo_whisper_prompt_info(const char *model, const char *prompt, int *count, 
     whisper_token *tokens=prompt_tokens(ctx,prompt,count,used,limit);
     free(tokens); whisper_free(ctx); return 0;
 }
+struct progress_context { elpo_progress_callback callback; void *user; };
+static void report_progress(struct whisper_context *ctx, struct whisper_state *state, int percent, void *user) {
+    (void)ctx; (void)state;
+    struct progress_context *progress = user;
+    if (progress->callback && percent >= 0 && percent <= 100) progress->callback(progress->user, percent);
+}
 // No subprocess: killing the managed helper releases this context and Metal.
 int elpo_whisper(const char *model, const char *language, const float *audio,
-                 int count, int threads, const char *prompt, int *prompt_count, int *prompt_used, int *prompt_limit, elpo_token_callback callback, elpo_token_callback segment_callback, void *user) {
+                 int count, int threads, const char *prompt, int *prompt_count, int *prompt_used, int *prompt_limit, elpo_token_callback callback, elpo_token_callback segment_callback, elpo_progress_callback progress_callback, void *user) {
     struct whisper_context_params cp = whisper_context_default_params();
     cp.use_gpu = true;
     cp.flash_attn = true;
@@ -58,6 +64,9 @@ int elpo_whisper(const char *model, const char *language, const float *audio,
     p.prompt_tokens=initial; p.prompt_n_tokens=*prompt_used;
     p.n_max_text_ctx=*prompt_limit;
     p.carry_initial_prompt=true;
+    struct progress_context progress = { progress_callback, user };
+    p.progress_callback = report_progress;
+    p.progress_callback_user_data = &progress;
     int status = whisper_full(ctx, p, audio, count);
     free(initial);
     if (status == 0) {

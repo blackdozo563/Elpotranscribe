@@ -14,8 +14,8 @@
 ## Design
 
 - App Mac, pas site web : aucun surtitre marketing, aucun fil d’Ariane, aucun texte promotionnel dans l’interface.
-- Échelle : texte 13 px, secondaire 12 px, titres de page 22 px semibold. Contrôles de 28 px (32 px pour l’action principale). Lignes de barre latérale de 28 px.
-- Couleurs uniquement via les tokens : violet = action principale et sélection, rien d’autre ; ambre = divergences et points à relire ; vert = terminé ou vérifié ; corail = erreur. Fond neutre, sans teinte violette.
+- Échelle : texte 13 px, secondaire 12 px, titres de page 22 px semibold. Contrôles de 28 px (32 px pour l’action principale). Lignes de barre latérale de 44 px et texte de 15 px (correction demandée après essai de la 1.3.0).
+- Couleurs uniquement via les tokens : violet = action principale et sélection, rien d’autre ; ambre = divergences et points à relire ; bleu = transcription en cours ; vert = terminé ou vérifié ; corail = erreur. Fond neutre, sans teinte violette.
 - Polices : system-ui pour l’interface, ui-serif pour le texte transcrit, ui-monospace avec tabular-nums pour les temps.
 - Séparer par l’espacement et les nuances de fond plutôt que par des bordures. Jamais de carte dans une carte.
 - Curseur flèche sur les boutons. Interface non sélectionnable, sauf les champs et le texte transcrit.

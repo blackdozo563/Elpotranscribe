@@ -186,7 +186,7 @@ jobs:
           VERSION: ${{ needs.build.outputs.version }}
         run: |
           cat > release-notes.md <<'NOTES'
-          Nouvelle interface : bibliothèque unique, relecture, réglages séparés, profils de vocabulaire, thèmes clair/sombre et chapitres YouTube.
+          Interface corrigée : navigation agrandie, actions directes, Réglages en bas de barre, compteurs du lot, progression réelle Ultra/Whisper et statuts distincts (bleu en cours, vert terminé). Double vérification accessible dès l’import ; avertissements d’export repliés.
 
           Préversion Apple Silicon signée ad hoc, non notariée. Traitement local Ultra + Whisper Turbo. Validation courte française : inférence, SRT, suppression et double vérification. Le test long de 20 minutes reste indépendant et ne bloque pas cette publication. Le matériel M2 8 Go physique n'est pas mesuré par la CI.
 

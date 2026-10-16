@@ -74,6 +74,7 @@ export interface ModelUpdate {
   error: string | null;
 }
 export interface Snapshot {
+  inferenceProgress?: { jobId: string; engine: string; phase: "loading" | "preparing" | "transcribing"; percent: number | null } | null;
   downloadProgress?: import("./downloadProgress").DownloadProgress | null;
   settingsRevision?: number;
   reviewPendingTotal?: number;

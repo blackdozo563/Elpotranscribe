@@ -4,13 +4,26 @@ import json, os, pathlib, re, subprocess, sys, tempfile
 root = pathlib.Path(__file__).resolve().parent.parent
 helper = pathlib.Path(sys.argv[1]).resolve()
 def call(request):
-    result = subprocess.run([str(helper)], input=json.dumps(request), text=True, capture_output=True, timeout=600)
+    env = os.environ.copy()
+    progress_path = None
+    if request.get('action') == 'transcribe':
+        progress_path = pathlib.Path(request['models']).parent / 'inference-progress.json'
+        progress_path.unlink(missing_ok=True)
+        env['ELPO_INFERENCE_PROGRESS'] = str(progress_path)
+    result = subprocess.run([str(helper)], input=json.dumps(request), text=True, capture_output=True, timeout=600, env=env)
     values = []
     for line in result.stdout.splitlines():
         try: values.append(json.loads(line))
         except ValueError: pass
     if result.returncode or not values or 'error' in values[-1]:
         raise RuntimeError(str(values[-1] if values else result.stderr[-2000:]))
+    if progress_path is not None:
+        progress = json.loads(progress_path.read_text())
+        assert progress['engine'] == request['engine'], progress
+        assert progress['phase'] == 'transcribing', progress
+        if request['engine'] == 'whisper-turbo' or values[-1]['durationMs'] > 15000:
+            assert isinstance(progress['percent'], int) and 0 <= progress['percent'] <= 100, progress
+        print('Observed native progress: ' + json.dumps(progress), flush=True)
     return values[-1]
 def integration(name, env):
     result = subprocess.run(['cargo','test','--locked','--release','-p','elpotranscribe','--target','aarch64-apple-darwin',name,'--','--ignored','--nocapture'], cwd=root, env=env, text=True, capture_output=True, timeout=900)
@@ -23,7 +36,7 @@ with tempfile.TemporaryDirectory(prefix='elpo-release-') as folder:
     voice = next((m.group(1).strip() for line in voices.splitlines() if (m:=re.match(r'(.+?)\s+fr_FR\s',line))), None)
     assert voice, 'Voix système française locale absente'
     audio = temp/'Français.aiff'
-    subprocess.run(['/usr/bin/say','-v',voice,'-o',str(audio),'Bonjour. Ce soir, nous vérifions la transcription en français. Les sous-titres conservent les vrais horaires du moteur. Merci de votre attention.'],check=True,timeout=60)
+    subprocess.run(['/usr/bin/say','-v',voice,'-o',str(audio),'Bonjour. Ce soir, nous vérifions la transcription en français. Les sous-titres conservent les vrais horaires du moteur. Merci de votre attention. ' * 3],check=True,timeout=60)
     duration = call({'action':'probe','source':str(audio)})['durationMs']
     assert 1000 <= duration <= 90000, duration
     models = temp/'models'

@@ -8,6 +8,8 @@ La refonte en cours sur `refonte-interface` conserve les moteurs et données de 
 
 Les phases 6 et 7 ajoutent les décisions persistantes de relecture, leurs plages Unicode, leur interface dans le texte et leur annulation dans la pile de l’éditeur. Au premier chargement d’un ancien historique contenant des comparaisons, une copie `history.pre-review-v1.json` est conservée à côté de `history.json`.
 
+La correction **1.3.1** restaure une navigation plus lisible et les accès directs, affiche les compteurs du lot, distingue le traitement **bleu** du résultat terminé **vert**, et montre le pourcentage réellement remonté par Ultra/Whisper. Le chargement du modèle et les étapes sans mesure restent indéterminés. La double vérification est de nouveau accessible dès l’import. La validation macOS de cette correction est suivie dans [VALIDATION.md](docs/VALIDATION.md).
+
 ## Transcrire et relire
 
 Importer jusqu’à dix fichiers par lot, choisir le moteur, la langue et éventuellement un profil. Les traitements sont séquentiels. Le changement de profil fixe sa langue ; « Aucun profil » conserve une transcription sans invite de domaine.
