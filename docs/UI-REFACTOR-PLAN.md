@@ -1,6 +1,6 @@
 # Plan de refonte demandé
 
-Document de référence fourni par l’utilisateur le 15 octobre 2026. État courant : phases 1 à 11 implémentées, contrôles Linux réussis ; validation native Mac non effectuée. Les onze phases sont terminées côté portable ; poursuivre par **la validation native macOS** avant un nouveau DMG. Voir [audit](UI-AUDIT.md) et [preuves](VALIDATION.md).
+Document de référence fourni par l’utilisateur le 15 octobre 2026. État courant : phases 1 à 11 implémentées, contrôles Linux réussis ; validation native CI réussie pour la livraison 1.3.0, essais interactifs sur votre Mac restants. Le DMG 1.3.0 est publié et vérifié ; poursuivre par **les essais interactifs et de performance sur le M2 8 Go**. Voir [audit](UI-AUDIT.md) et [preuves](VALIDATION.md).
 
 ---
 

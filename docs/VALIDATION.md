@@ -3,6 +3,21 @@
 
 
 
+## Livraison 1.3.0 — DMG natif publié et téléchargement vérifié (16 octobre 2026)
+
+[Préversion](https://github.com/blackdozo563/Elpotranscribe/releases/tag/v1.3.0) · [DMG Apple Silicon](https://github.com/blackdozo563/Elpotranscribe/releases/download/v1.3.0/Elpotranscribe-macOS-Apple-Silicon-v1.3.0.dmg) · [build macOS réussi](https://github.com/blackdozo563/Elpotranscribe/actions/runs/38863774305). Source du tag `v1.3.0` : `52e50bc954` (voir le commit complet dans Git). Taille téléchargée : **6487007 octets**. SHA-256 recalculé sur le fichier intégral et identique à `SHA256SUMS.txt` :
+
+```text
+142e8e40e4c1de3a4dbf853a70936a442ed70836d597b96c0ad1d943f39d6411
+```
+
+Le run 29 a passé le job portable (41 tests Vitest, 53 scénarios navigateur, contrôle Node des noms de modules et tests/Clippy du cœur), la compilation Swift, **24 tests XCTest**, les tests Rust sur macOS, le contrôle TypeScript macOS et l’empaquetage ARM64. `validate-dmg.sh` a vérifié l’image montée, la version 1.3.0 réelle, les binaires ARM64 et ressources, les signatures ad hoc et l’absence de dépendances de développement externes, puis exécuté le contrôle français court du helper empaqueté : Ultra, Turbo, tokenizer borné, exports, suppression persistée, annulation, double vérification inversable et benchmark local inclus. Le job de publication a réussi. Le téléchargement HTTP réel du DMG a ensuite été relu intégralement et son empreinte comparée au fichier de sommes publié.
+
+Le premier essai de compilation (run 28) avait réussi en Swift/Rust mais échoué sur les collisions de résolution TypeScript dans le système de fichiers macOS. Les vues `Library.tsx`, `Review.tsx`, `SecondOpinion.tsx` et `Chapters.tsx` ont été renommées `LibraryView.tsx`, `ReviewComponents.tsx`, `SecondOpinionViews.tsx` et `YouTubeChapters.tsx`. Le contrôle `scripts/check-import-paths.mjs`, avec son test de régression Node, est exécuté avant TypeScript ; il refuse l’ancien cas `.ts`/`.tsx` ne différant que par la casse. Aucune dépendance ajoutée, aucun comportement de transcription changé. Le tag 1.3.0 a été corrigé **avant toute publication**, puis le run 29 a validé ces sources.
+
+Les validations des phases ci-dessous sont historiques ; cette livraison apporte depuis les preuves natives qui manquaient. Le test de vingt minutes est indépendant et n’a pas été attendu pour publier. Aucun essai de cette version sur le M2 8 Go physique de l’utilisateur, ni test interactif complet du verre, des menus/fenêtres, de VoiceOver, du Dock, de la relecture ou du thème système n’est revendiqué. Le DMG reste non notarié.
+
+
 ## Refonte de l’interface — Phase 11 (16 octobre 2026)
 
 Identité et finitions terminées côté portable. Aucun changement du calcul d’inférence, des limites de sous-titres ni des formats d’export. Aucune nouvelle dépendance d’exécution.

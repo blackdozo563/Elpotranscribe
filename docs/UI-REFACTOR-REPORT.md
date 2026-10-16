@@ -1,8 +1,8 @@
 # Compte rendu des onze phases
 
-Branche `refonte-interface`, 16 octobre 2026. Implémentation et contrôles portables terminés. Les tests navigateur utilisent un IPC simulé ; ils ne prouvent pas l’inférence, les menus AppKit ou la copie système. Aucun nouveau DMG de la refonte n’est publié. Le détail des preuves et limites de chaque phase figure dans [VALIDATION.md](VALIDATION.md).
+Branche `refonte-interface`, 16 octobre 2026. Implémentation et contrôles portables terminés. Les tests navigateur utilisent un IPC simulé ; ils ne prouvent pas l’inférence, les menus AppKit ou la copie système. Le [DMG 1.3.0](https://github.com/blackdozo563/Elpotranscribe/releases/download/v1.3.0/Elpotranscribe-macOS-Apple-Silicon-v1.3.0.dmg) est maintenant publié et son téléchargement/SHA-256 vérifié ; voir le compte rendu de livraison dans [VALIDATION.md](VALIDATION.md). Le détail des preuves et limites de chaque phase figure dans [VALIDATION.md](VALIDATION.md).
 
-Les nombres ci-dessous sont les totaux exécutés à la fin de chaque phase, repris des rapports de validation ; ils ne s’additionnent pas. « — » signifie non consigné pour cette phase. Build TypeScript/Vite et Clippy du cœur ont réussi à chaque phase. Les contrôles Swift/macOS de cette branche restent non exécutés ici.
+Les nombres ci-dessous sont les totaux exécutés à la fin de chaque phase, repris des rapports de validation ; ils ne s’additionnent pas. « — » signifie non consigné pour cette phase. Build TypeScript/Vite et Clippy du cœur ont réussi à chaque phase. Les résultats par phase ci-dessous sont historiques. La livraison 1.3.0 a depuis réussi les contrôles Swift/macOS en CI ; les essais interactifs sur votre Mac restent nécessaires.
 
 | Phase | Commit | Tests TypeScript | Navigateur | Cœur Rust | App Rust portable |
 |---|---|---:|---:|---:|---:|
@@ -120,7 +120,7 @@ Fichiers modifiés :
 - [docs/UI-REFACTOR-PLAN.md](../docs/UI-REFACTOR-PLAN.md)
 - [docs/VALIDATION.md](../docs/VALIDATION.md)
 - [src/App.tsx](../src/App.tsx)
-- [src/Library.tsx](../src/Library.tsx)
+- [src/Library.tsx](../src/LibraryView.tsx)
 - [src/Models.tsx](../src/Models.tsx)
 - [src/library.ts](../src/library.ts)
 - [src/style.css](../src/style.css)
@@ -163,7 +163,7 @@ Fichiers modifiés :
 - [docs/UI-REFACTOR-PLAN.md](../docs/UI-REFACTOR-PLAN.md)
 - [docs/VALIDATION.md](../docs/VALIDATION.md)
 - [src/App.tsx](../src/App.tsx)
-- [src/Review.tsx](../src/Review.tsx)
+- [src/Review.tsx](../src/ReviewComponents.tsx)
 - [src/reviewNavigation.ts](../src/reviewNavigation.ts)
 - [src/style.css](../src/style.css)
 - [tests/browser/app.spec.ts](../tests/browser/app.spec.ts)
@@ -186,7 +186,7 @@ Fichiers modifiés :
 - [src-tauri/src/desktop.rs](../src-tauri/src/desktop.rs)
 - [src-tauri/src/history.rs](../src-tauri/src/history.rs)
 - [src/App.tsx](../src/App.tsx)
-- [src/SecondOpinion.tsx](../src/SecondOpinion.tsx)
+- [src/SecondOpinion.tsx](../src/SecondOpinionViews.tsx)
 - [src/domain.ts](../src/domain.ts)
 - [src/secondOpinion.ts](../src/secondOpinion.ts)
 - [src/style.css](../src/style.css)
@@ -214,7 +214,7 @@ Fichiers modifiés :
 - [src-tauri/src/menus.rs](../src-tauri/src/menus.rs)
 - [src-tauri/src/preferences.rs](../src-tauri/src/preferences.rs)
 - [src/App.tsx](../src/App.tsx)
-- [src/Library.tsx](../src/Library.tsx)
+- [src/Library.tsx](../src/LibraryView.tsx)
 - [src/Models.tsx](../src/Models.tsx)
 - [src/SettingsWindow.tsx](../src/SettingsWindow.tsx)
 - [src/domain.ts](../src/domain.ts)
@@ -247,7 +247,7 @@ Fichiers modifiés :
 - [src-tauri/src/desktop.rs](../src-tauri/src/desktop.rs)
 - [src-tauri/src/history.rs](../src-tauri/src/history.rs)
 - [src/App.tsx](../src/App.tsx)
-- [src/Review.tsx](../src/Review.tsx)
+- [src/Review.tsx](../src/ReviewComponents.tsx)
 - [src/Vocabulary.tsx](../src/Vocabulary.tsx)
 - [src/review.ts](../src/review.ts)
 - [src/reviewClient.ts](../src/reviewClient.ts)
@@ -289,7 +289,7 @@ Fichiers modifiés :
 - [src-tauri/src/download_progress.rs](../src-tauri/src/download_progress.rs)
 - [src-tauri/src/main.rs](../src-tauri/src/main.rs)
 - [src/App.tsx](../src/App.tsx)
-- [src/Chapters.tsx](../src/Chapters.tsx)
+- [src/Chapters.tsx](../src/YouTubeChapters.tsx)
 - [src/Models.tsx](../src/Models.tsx)
 - [src/chapters.ts](../src/chapters.ts)
 - [src/domain.ts](../src/domain.ts)
