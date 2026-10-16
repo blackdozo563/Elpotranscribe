@@ -11,7 +11,12 @@ import {
   nextPendingReview,
   isPendingReview,
 } from "./reviewNavigation";
-import { listReview, restoreReview, resolveReview } from "./reviewClient";
+import {
+  listReview,
+  restoreReview,
+  resolveReview,
+  prepareVocabularyReview,
+} from "./reviewClient";
 import type { ReviewDecision } from "./review";
 import Library from "./Library";
 import Models from "./Models";
@@ -735,7 +740,7 @@ function Editor({
   const [reviewMode, setReviewMode] = useState(startInReview);
   const [activeDifference, setActiveDifference] = useState<string | null>(null);
   const [modifyingReview, setModifyingReview] = useState(false);
-  const [reviewBusy, setReviewBusy] = useState(!!job.reviewState);
+  const [reviewBusy, setReviewBusy] = useState(!!job.reviewState || !!profile);
   const [reviewAnchor, setReviewAnchor] = useState<HTMLButtonElement | null>(
     null,
   );
@@ -744,11 +749,13 @@ function Editor({
   const revision = useRef(job.editRevision ?? 0);
   const editing = useRef(state);
   editing.current = state;
-  const busyReview = useRef(!!job.reviewState);
+  const busyReview = useRef(!!job.reviewState || !!profile);
   useEffect(() => {
-    if (!job.reviewState) return;
+    if (!job.reviewState && !profile) return;
     let mounted = true;
-    void listReview(job.id)
+    void (
+      profile ? prepareVocabularyReview(job.id, profile.id) : listReview(job.id)
+    )
       .then((document) => {
         if (!mounted) return;
         revision.current = document.revision;
@@ -1574,7 +1581,7 @@ function Editor({
                   />
                 </>
               )}
-              {!!vocabularyMatches[i]?.length && (
+              {!reviewMode && !!vocabularyMatches[i]?.length && (
                 <div className="profile-near-misses">
                   <strong>Vocabulaire · à relire</strong>
                   {vocabularyMatches[i].map((match) => (

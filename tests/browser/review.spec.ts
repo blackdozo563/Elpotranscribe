@@ -302,3 +302,56 @@ test("relecture : rouvrir charge la révision persistée même si la bibliothèq
   ).toBeVisible();
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
+
+test("vocabulaire en relecture : suggestion identifiée, garder/accepter, annuler et reprendre", async ({
+  page,
+}) => {
+  await reviewFixture(page, true);
+  await page.getByRole("button", { name: "Ouvrir", exact: true }).click();
+  await expect(page.getByLabel("Sous-titre 1", { exact: true })).toHaveValue(
+    "Je lis l’Evengile.",
+  );
+  await page.getByRole("button", { name: "Relecture", exact: true }).click();
+  await expect(page.getByRole("dialog")).toContainText(
+    "Suggestion de vocabulaire",
+  );
+  await expect(page.getByRole("dialog")).toContainText(
+    "aucune correction automatique",
+  );
+  await expect(page.locator(".profile-near-misses")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect
+    .poll(
+      async () =>
+        JSON.parse(
+          (await page.evaluate(() =>
+            localStorage.getItem("fixture-review-phase7"),
+          ))!,
+        ).jobs[0].reviewState.differences[0].status,
+    )
+    .toBe("kept");
+  await expect(page.locator(".review-text").first()).toHaveText(
+    "Je lis l’Evengile.",
+  );
+  await page.keyboard.press("Meta+z");
+  await expect(
+    page.getByText("3 divergences · 0 traitées", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: /Divergence : Evengile/ }).click();
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".review-text").first()).toHaveText(
+    "Je lis l’Évangile.",
+  );
+  await page.reload();
+  await page.getByRole("button", { name: "Ouvrir", exact: true }).click();
+  await page.getByRole("button", { name: "Relecture", exact: true }).click();
+  const stored = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem("fixture-review-phase7")!),
+  );
+  expect(stored.jobs[0].reviewState.differences[0].status).toBe("accepted");
+  expect(stored.jobs[0].cues[0]).toEqual({
+    startMs: 100,
+    endMs: 2500,
+    text: "Je lis l’Évangile.",
+  });
+});

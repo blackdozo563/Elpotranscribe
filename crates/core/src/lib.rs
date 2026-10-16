@@ -1,5 +1,6 @@
 pub mod native;
 pub mod vocabulary;
+pub mod vocabulary_review;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,

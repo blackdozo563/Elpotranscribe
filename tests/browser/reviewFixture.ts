@@ -3,7 +3,7 @@ import type { Cue, Job, Snapshot } from "../../src/domain";
 import type { ReviewDecision, ReviewSession } from "../../src/review";
 
 /** Renderer/IPC fixture only. No inference, alignment, disk I/O or audio playback is proved here. */
-export async function reviewFixture(page: Page) {
+export async function reviewFixture(page: Page, vocabulary = false) {
   const cues: Cue[] = [
     { startMs: 100, endMs: 2500, text: "Je sors ce foir." },
     { startMs: 2800, endMs: 5000, text: "Nous sommes à pari." },
@@ -73,6 +73,36 @@ export async function reviewFixture(page: Page) {
       },
     },
   };
+  if (vocabulary) {
+    cues[0].text = "Je lis l’Evengile.";
+    const range = { start: 9, end: 17 };
+    reviewState.differences[0] = {
+      id: "review-ui:vocabulary",
+      cueIndex: 0,
+      range,
+      currentText: "Evengile",
+      status: "pending",
+      source: {
+        cueIndex: 0,
+        range,
+        primaryText: "Evengile",
+        secondaryText: "Évangile",
+        alternativeText: "Évangile",
+        primaryEngine: "ultra",
+        secondaryEngine: "vocabulary",
+        profileTerm: true,
+        vocabulary: true,
+      },
+    };
+    job.profileSnapshot = {
+      id: "liturgy-fr",
+      name: "Liturgie FR",
+      language: "fr",
+      terms: ["Évangile"],
+      whisper_prompt: "",
+      builtin: true,
+    };
+  }
   const seed: Snapshot = {
     jobs: [job],
     settings: {
@@ -147,6 +177,7 @@ export async function reviewFixture(page: Page) {
             return snapshot;
           }
           if (command === "fixture_state") return state;
+          if (command === "prepare_vocabulary_review") return doc(args.id);
           if (command === "list_review") return doc(args.id);
           if (command === "plugin:menu|new")
             return [99, "fixture-context-menu"];

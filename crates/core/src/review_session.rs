@@ -31,6 +31,8 @@ pub struct Source {
     pub primary_engine: String,
     pub secondary_engine: String,
     pub profile_term: bool,
+    #[serde(default)]
+    pub vocabulary: bool,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -181,6 +183,7 @@ impl Session {
                         primary_engine: primary.into(),
                         secondary_engine: secondary.into(),
                         profile_term: legacy.profile_term,
+                        vocabulary: false,
                     },
                     cue_index: legacy.cue_index,
                     range: fresh.then_some(range),

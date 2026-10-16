@@ -53,3 +53,13 @@ it("garde les élisions françaises lors de la proposition d’un terme", () => 
     "L’Évangile et l’Évangile.",
   );
 });
+
+it("ajoute un collage en préservant les accents et signale tous les doublons", async () => {
+  const { appendTerms } = await import("../src/vocabularyTerms");
+  expect(
+    appendTerms(["Évangile"], " ÉVANGILE\r\n\n Kyrie \nKyrie\nNotre Père"),
+  ).toEqual({
+    terms: ["Évangile", "Kyrie", "Notre Père"],
+    duplicates: ["ÉVANGILE", "Kyrie"],
+  });
+});

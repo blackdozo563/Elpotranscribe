@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-async function fixture(page: Page) {
+export async function fixture(page: Page) {
   await page.addInitScript(() => {
     const defaults = [
       {
@@ -46,7 +46,9 @@ async function fixture(page: Page) {
         subtitles: { lineLength: 42, maxLines: 2, maxDurationMs: 5000 },
       },
     };
+    const calls: { command: string; args: unknown }[] = [];
     Object.assign(window, {
+      __TEST_PROFILE_CALLS__: calls,
       __TEST_PROFILE_STATE__: state,
       __TAURI_EVENT_PLUGIN_INTERNALS__: { unregisterListener: () => {} },
       __TAURI_INTERNALS__: {
@@ -71,6 +73,18 @@ async function fixture(page: Page) {
             jobId?: string;
           },
         ) => {
+          calls.push({ command, args });
+          if (command === "prepare_vocabulary_review") {
+            const job = state.jobs.find(
+              (j: { id: string }) => j.id === args.id,
+            ) as unknown as { cues: unknown[] };
+            return {
+              cues: structuredClone(job.cues),
+              reviewState: null,
+              revision: 0,
+            };
+          }
+          if (command === "plugin:menu|new") return [88, "profile-menu"];
           if (command === "snapshot") return structuredClone(state);
           if (command === "confirm_action")
             return (
@@ -155,6 +169,44 @@ async function fixture(page: Page) {
   await page.goto("/");
   await page.getByRole("button", { name: "Vocabulaire", exact: true }).click();
 }
+export async function pasteTerms(page: Page, text: string) {
+  await page
+    .getByLabel("Ajouter un terme", { exact: true })
+    .evaluate((field, text) => {
+      const clipboardData = new DataTransfer();
+      clipboardData.setData("text/plain", text);
+      field.dispatchEvent(
+        new ClipboardEvent("paste", { clipboardData, bubbles: true }),
+      );
+    }, text);
+}
+export async function profileMenu(page: Page, id: string) {
+  await page
+    .getByRole("button", { name: "Options du profil", exact: true })
+    .click();
+  await page.evaluate((id) => {
+    const calls = (
+      window as unknown as {
+        __TEST_PROFILE_CALLS__: {
+          command: string;
+          args: {
+            options?: {
+              items: {
+                id?: string;
+                handler?: { onmessage: (id: string) => void };
+              }[];
+            };
+          };
+        }[];
+      }
+    ).__TEST_PROFILE_CALLS__;
+    const item = calls
+      .filter((c) => c.command === "plugin:menu|new")
+      .at(-1)
+      ?.args.options?.items.find((i) => i.id === id);
+    item?.handler?.onmessage(id);
+  }, id);
+}
 test("profils : créer, coller, ajouter par Entrée, enregistrer et retrouver après redémarrage", async ({
   page,
 }) => {
@@ -163,16 +215,14 @@ test("profils : créer, coller, ajouter par Entrée, enregistrer et retrouver ap
     .getByRole("button", { name: "Nouveau profil", exact: true })
     .click();
   await page.getByLabel("Nom du profil", { exact: true }).fill("Mes prières");
-  await page
-    .getByLabel("Termes du profil", { exact: true })
-    .fill(" Évangile \nÉVANGILE\n\n Kyrie ");
+  await pasteTerms(page, " Évangile \nÉVANGILE\n\n Kyrie ");
   await page.getByLabel("Ajouter un terme", { exact: true }).fill("Magnificat");
   await page.getByLabel("Ajouter un terme", { exact: true }).press("Enter");
   await expect(
-    page.getByLabel("Termes du profil", { exact: true }),
-  ).toHaveValue("Évangile\nKyrie\nMagnificat");
+    page.getByRole("list", { name: "Termes enregistrés dans le profil" }),
+  ).toHaveText(/ÉvangileKyrieMagnificat/);
   await page
-    .getByLabel("Invite Whisper", { exact: true })
+    .getByLabel("Phrase de contexte", { exact: true })
     .fill("Nous chantons le Magnificat.");
   await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
   await expect(
@@ -182,22 +232,23 @@ test("profils : créer, coller, ajouter par Entrée, enregistrer et retrouver ap
   await page.getByRole("button", { name: "Vocabulaire", exact: true }).click();
   await page.getByRole("button", { name: /Mes prières.*3 termes/ }).click();
   await expect(
-    page.getByLabel("Termes du profil", { exact: true }),
-  ).toHaveValue("Évangile\nKyrie\nMagnificat");
-  await expect(page.getByLabel("Invite Whisper", { exact: true })).toHaveValue(
-    "Nous chantons le Magnificat.",
-  );
+    page.getByRole("list", { name: "Termes enregistrés dans le profil" }),
+  ).toHaveText(/ÉvangileKyrieMagnificat/);
+  await expect(
+    page.getByLabel("Phrase de contexte", { exact: true }),
+  ).toHaveValue("Nous chantons le Magnificat.");
 });
 test("profils fournis : suppression interdite, édition et réinitialisation ; garde des modifications", async ({
   page,
 }) => {
   await fixture(page);
   await expect(
-    page.getByRole("button", { name: "Supprimer", exact: true }),
+    page.getByRole("button", { name: "Supprimer le profil", exact: true }),
   ).toBeDisabled();
   await page
-    .getByLabel("Termes du profil", { exact: true })
+    .getByLabel("Ajouter un terme", { exact: true })
     .fill("Terme changé");
+  await page.getByLabel("Ajouter un terme", { exact: true }).press("Enter");
   await page.evaluate(() => Object.assign(window, { __TEST_CONFIRM__: false }));
   await page.getByRole("button", { name: "Modèles IA", exact: true }).click();
   await expect(
@@ -205,15 +256,13 @@ test("profils fournis : suppression interdite, édition et réinitialisation ; g
   ).toBeVisible();
   await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
   await page.evaluate(() => Object.assign(window, { __TEST_CONFIRM__: true }));
-  await page
-    .getByRole("button", { name: "Réinitialiser", exact: true })
-    .click();
+  await profileMenu(page, "reset");
   await expect(
-    page.getByLabel("Termes du profil", { exact: true }),
-  ).toHaveValue("Évangile\nPsaume");
-  await expect(page.getByLabel("Invite Whisper", { exact: true })).toHaveValue(
-    "L’Évangile et le Psaume.",
-  );
+    page.getByRole("list", { name: "Termes enregistrés dans le profil" }),
+  ).toHaveText("ÉvangilePsaume");
+  await expect(
+    page.getByLabel("Phrase de contexte", { exact: true }),
+  ).toHaveValue("L’Évangile et le Psaume.");
 });
 
 test("sélection du profil : langue automatique et lien vers le bon profil", async ({
@@ -308,4 +357,117 @@ test("éditeur : terme proche, remplacement annulable et ajout au profil persist
   await expect(
     page.getByLabel("Termes du profil", { exact: true }),
   ).toContainText("Freud");
+});
+
+test("termes : doublons signalés, filtre au-delà de vingt, retrait et sauvegarde", async ({
+  page,
+}) => {
+  await fixture(page);
+  await expect(
+    page.getByLabel("Filtrer les termes", { exact: true }),
+  ).toHaveCount(0);
+  await pasteTerms(page, "ÉVANGILE\nÉpître\nÉpître");
+  await expect(
+    page.getByRole("status").filter({ hasText: "Déjà présents" }),
+  ).toContainText("ÉVANGILE, Épître");
+  await expect(
+    page.getByRole("button", { name: "Retirer Épître", exact: true }),
+  ).toHaveCount(1);
+  await pasteTerms(
+    page,
+    Array.from({ length: 19 }, (_, i) => `Terme ${i + 1}`).join("\n"),
+  );
+  await page.getByLabel("Filtrer les termes", { exact: true }).fill("TERME 19");
+  const list = page.getByRole("list", {
+    name: "Termes enregistrés dans le profil",
+  });
+  await expect(list.getByRole("listitem")).toHaveCount(1);
+  await page
+    .getByRole("button", { name: "Retirer Terme 19", exact: true })
+    .click();
+  await expect(
+    page.getByText("Aucun terme ne correspond.", { exact: true }),
+  ).toBeVisible();
+  await page.getByLabel("Filtrer les termes", { exact: true }).fill("");
+  await page
+    .getByRole("button", { name: "Retirer Terme 18", exact: true })
+    .click();
+  await expect(
+    page.getByLabel("Filtrer les termes", { exact: true }),
+  ).toHaveCount(0);
+  await expect(list.getByRole("listitem")).toHaveCount(20);
+  await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
+  await expect(
+    page.getByText("Profil enregistré", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByLabel("Phrase de contexte", { exact: true }),
+  ).toHaveValue("L’Évangile et le Psaume.");
+  await expect(
+    page.getByRole("region", { name: "Éditer le profil" }),
+  ).toContainText("Whisper large-v3-turbo");
+});
+
+test("profils : menu natif, duplication et suppression confirmée", async ({
+  page,
+}) => {
+  await fixture(page);
+  await profileMenu(page, "duplicate");
+  await expect(page.getByLabel("Nom du profil", { exact: true })).toHaveValue(
+    "Liturgie FR — copie",
+  );
+  await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Supprimer le profil", exact: true }),
+  ).toBeEnabled();
+  await page.evaluate(() => Object.assign(window, { __TEST_CONFIRM__: false }));
+  await page
+    .getByRole("button", { name: "Supprimer le profil", exact: true })
+    .click();
+  await expect(page.getByLabel("Nom du profil", { exact: true })).toHaveValue(
+    "Liturgie FR — copie",
+  );
+  await page.evaluate(() => Object.assign(window, { __TEST_CONFIRM__: true }));
+  await page
+    .getByRole("button", { name: "Supprimer le profil", exact: true })
+    .click();
+  await expect(page.getByLabel("Nom du profil", { exact: true })).toHaveValue(
+    "Liturgie FR",
+  );
+});
+
+test("profil : les actions JSON du menu conservent les commandes et l’identifiant existants", async ({
+  page,
+}) => {
+  await fixture(page);
+  await profileMenu(page, "export");
+  await profileMenu(page, "import");
+  const calls = await page.evaluate(
+    () =>
+      (
+        window as unknown as {
+          __TEST_PROFILE_CALLS__: {
+            command: string;
+            args: {
+              id?: string;
+              options?: { items: { text: string; enabled?: boolean }[] };
+            };
+          }[];
+        }
+      ).__TEST_PROFILE_CALLS__,
+  );
+  expect(calls.find((call) => call.command === "export_profile")?.args).toEqual(
+    { id: "liturgy-fr" },
+  );
+  expect(calls.some((call) => call.command === "import_profile")).toBe(true);
+  expect(
+    calls
+      .filter((call) => call.command === "plugin:menu|new")
+      .at(-1)
+      ?.args.options?.items.map((item) => item.text),
+  ).toEqual(["Dupliquer", "Réinitialiser", "Importer .json", "Exporter .json"]);
+  const profile = page.getByRole("button", { name: /Psychologie EN-US/ });
+  expect(
+    await profile.evaluate((el) => getComputedStyle(el).flexDirection),
+  ).toBe("column");
 });

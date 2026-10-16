@@ -196,13 +196,23 @@ export function ReviewPopover({
       <dl>
         <dt>{engineName(difference.source.primaryEngine)}</dt>
         <dd dir="auto">{difference.source.primaryText || "Aucun mot"}</dd>
-        <dt>{engineName(difference.source.secondaryEngine)}</dt>
+        <dt>
+          {difference.source.vocabulary
+            ? "Suggestion de vocabulaire"
+            : engineName(difference.source.secondaryEngine)}
+        </dt>
         <dd dir="auto">
           {difference.source.secondaryText ??
             difference.source.alternativeText ??
             "Aucune proposition"}
         </dd>
       </dl>
+      {difference.source.vocabulary && (
+        <p className="review-warning">
+          Proximité orthographique avec un terme du profil. À valider à l’écoute
+          ; aucune correction automatique.
+        </p>
+      )}
       {!fresh && (
         <p className="review-warning">
           Le segment a été modifié. Sélectionnez explicitement le passage à

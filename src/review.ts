@@ -20,6 +20,7 @@ export interface ReviewSource {
   primaryEngine: string;
   secondaryEngine: string;
   profileTerm: boolean;
+  vocabulary?: boolean;
 }
 export interface ReviewDifference {
   id: string;

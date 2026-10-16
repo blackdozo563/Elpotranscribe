@@ -172,6 +172,30 @@ impl Job {
         self.review_state = Some(session);
         Ok(true)
     }
+    pub(crate) fn prepare_vocabulary(
+        &mut self,
+        profile: &core::vocabulary::Profile,
+    ) -> Result<ReviewDocument, String> {
+        self.check_edit(None)?;
+        let mut session = self.review_state.clone().unwrap_or(Session {
+            version: 1,
+            differences: vec![],
+            anchors: self.cues.clone(),
+        });
+        let count = core::vocabulary_review::append(
+            &mut session,
+            &self.id,
+            &self.engine,
+            &self.cues,
+            profile,
+        )
+        .map_err(|e| e.to_string())?;
+        if count > 0 {
+            self.review_state = Some(session);
+            self.edit_revision += 1;
+        }
+        Ok(self.document())
+    }
     pub(crate) fn document(&self) -> ReviewDocument {
         ReviewDocument {
             cues: self.cues.clone(),
@@ -218,7 +242,7 @@ impl Job {
         let session = self
             .review_state
             .as_ref()
-            .ok_or("Cette transcription n’a pas de second avis.")?;
+            .ok_or("Cette transcription n’a pas de suggestion à relire.")?;
         let (cues, session) = session
             .resolve(&self.cues, id, decision)
             .map_err(|e| e.to_string())?;
@@ -357,6 +381,52 @@ mod tests {
         assert!(job
             .observe_verification(VerificationStage::Secondary)
             .is_err());
+    }
+    #[test]
+    fn vocabulary_preparation_is_atomic_repeatable_and_decisions_survive_reload() {
+        let (_dir, path, mut store) = fixture();
+        let id = store.jobs[1].id.clone();
+        store.jobs[1].cues[0].text = "L’Evengile.".into();
+        let cues = store.jobs[1].cues.clone();
+        let mut profile = core::vocabulary::defaults().profiles.remove(0);
+        profile.terms = vec!["Évangile".into()];
+        let before = serde_json::to_vec(&store).unwrap();
+        assert!(store
+            .edit(
+                &id,
+                |job| job.prepare_vocabulary(&profile),
+                |_| Err("Disque indisponible".into())
+            )
+            .is_err());
+        assert_eq!(serde_json::to_vec(&store).unwrap(), before);
+        let prepared = store
+            .edit(
+                &id,
+                |job| job.prepare_vocabulary(&profile),
+                |candidate| {
+                    core::atomic_save(&path, &serde_json::to_vec(candidate).unwrap(), true)
+                        .map_err(|e| e.to_string())
+                },
+            )
+            .unwrap();
+        assert_eq!(prepared.cues, cues);
+        assert_eq!(prepared.revision, 1);
+        let difference = prepared.review_state.as_ref().unwrap().differences[0]
+            .id
+            .clone();
+        let job = &mut store.jobs[1];
+        assert_eq!(job.prepare_vocabulary(&profile).unwrap().revision, 1);
+        job.resolve(&difference, Decision::Keep, 1).unwrap();
+        core::atomic_save(&path, &serde_json::to_vec(&store).unwrap(), true).unwrap();
+        let mut reloaded = load(&path).unwrap();
+        let doc = reloaded.jobs[1].prepare_vocabulary(&profile).unwrap();
+        assert_eq!(doc.revision, 2);
+        assert_eq!(doc.review_state.as_ref().unwrap().differences.len(), 1);
+        assert_eq!(
+            doc.review_state.as_ref().unwrap().differences[0].status,
+            Status::Kept
+        );
+        assert_eq!(doc.cues, cues);
     }
     #[test]
     fn legacy_history_migrates_once_with_exact_backup_and_stable_ids() {

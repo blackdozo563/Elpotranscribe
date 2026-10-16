@@ -35,3 +35,6 @@ export const saveReviewedEdit = (
   expectedRevision: number,
 ) => invoke<ReviewDocument>("save_edit", { id, cues, expectedRevision });
 export const reviewPendingTotal = () => invoke<number>("review_pending_total");
+
+export const prepareVocabularyReview = (id: string, profileId: string) =>
+  invoke<ReviewDocument>("prepare_vocabulary_review", { id, profileId });

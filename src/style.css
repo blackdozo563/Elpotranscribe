@@ -2210,3 +2210,130 @@ input[type="checkbox"] {
 .settings-application dd {
   margin: 0;
 }
+
+/* Vocabulary: compact source list and a single editing surface. */
+.vocabulary-layout {
+  grid-template-columns: 248px minmax(0, 1fr);
+  gap: 24px;
+}
+.profile-list {
+  background: var(--color-panneau);
+  border-radius: 8px;
+  padding: 8px;
+  gap: 8px;
+}
+.profile-items {
+  max-height: calc(100vh - 250px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.profile-items .profile-item {
+  flex-direction: column;
+  line-height: 1.3;
+  align-items: flex-start;
+  justify-content: center;
+  width: 100%;
+  height: 48px;
+  min-height: 48px;
+  gap: 5px;
+  padding: 8px 10px;
+  border: none;
+  background: var(--color-transparent);
+}
+.profile-items .profile-item.active {
+  background: var(--color-action-doux);
+}
+.profile-items .profile-item strong {
+  flex: none;
+  font-weight: 500;
+}
+.profile-list-actions {
+  display: flex;
+  gap: 4px;
+  padding-top: 4px;
+}
+.profile-list-actions .ui-button:last-child {
+  margin-left: auto;
+}
+.profile-detail {
+  padding: 8px 16px 24px 0;
+  min-width: 0;
+}
+.profile-detail label {
+  font-size: 13px;
+  gap: 6px;
+}
+.profile-detail small,
+.profile-help,
+.profile-duplicates {
+  font-size: 12px;
+  color: var(--color-texte-secondaire);
+}
+.profile-help {
+  margin: 0;
+}
+.profile-terms-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.profile-terms-heading h2 {
+  margin: 0;
+}
+.profile-terms-heading > span {
+  font-size: 12px;
+  color: var(--color-texte-secondaire);
+}
+.term-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 6px;
+  list-style: none;
+  padding: 0;
+  margin: 10px 0;
+  max-height: 220px;
+  overflow: auto;
+}
+.term-tags li {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--color-sureleve);
+  border-radius: 6px;
+  padding: 0 4px 0 8px;
+  max-width: 100%;
+  min-height: 28px;
+}
+.term-tags li > span {
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.term-tags .ui-button {
+  padding: 0 4px;
+  height: 24px;
+  min-height: 24px;
+}
+.profile-terms > .ui-field {
+  width: 100%;
+}
+.profile-terms > .profile-help {
+  margin-top: 8px;
+}
+.profile-duplicates {
+  min-height: 18px;
+  margin: 4px 0 0;
+  color: var(--color-attention);
+}
+.profile-detail .button-row {
+  flex-wrap: wrap;
+}
+@media (max-width: 1100px) {
+  .vocabulary-layout {
+    grid-template-columns: 210px minmax(0, 1fr);
+    gap: 20px;
+  }
+}

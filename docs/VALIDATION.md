@@ -1,6 +1,34 @@
 # Validation réellement effectuée
 
 
+
+## Refonte de l’interface — Phase 10 (16 octobre 2026)
+
+Profils de vocabulaire compacts et suggestions intégrées à la relecture, sans changer l’inférence, les temps, les formats d’export ou le JSON des profils. Aucune dépendance ajoutée.
+
+- `src/Vocabulary.tsx`, `src/vocabularyTerms.ts`, `src/style.css` : liste gauche sur deux lignes compactes, actions +/−, menu natif « … » pour Dupliquer, Réinitialiser, Importer .json et Exporter .json. Étiquettes supprimables, un champ d’ajout par Entrée, collage de plusieurs lignes, doublons signalés et filtre visible au-delà de 20 termes. Le filtre ne supprime pas de données. Suppression confirmée, profils fournis protégés, sauvegarde/annulation et garde des modifications conservées. L’inspection visuelle a conduit à corriger la direction des lignes pour garder les noms des profils lisibles.
+- « Phrase de contexte » remplace « Invite Whisper » dans l’interface, le champ JSON `whisper_prompt` est conservé. Les textes d’aide à 12 px précisent Whisper large-v3-turbo et l’usage des termes par Ultra en relecture. Le parcours `native/swift/Sources/ElpoASR/ElpoASR.swift` appelle `transcribeWhisper(... prompt: request.whisperPrompt)` et `Whisper.swift` transmet ce préfixe au pont whisper.cpp ; le parcours Ultra ne le consomme pas. Aucun de ces appels n’a été modifié.
+- `crates/core/src/vocabulary_review.rs`, `review_session.rs` : recherche déterministe de mots/groupes proches, distance ≤ 2 après normalisation casse/accents, plages UTF-16 sur le texte réel. Les suggestions commencent à `pending`, avec origine de vocabulaire explicite et sans score. Une divergence existante ou décision sur la même plage prend la priorité ; un segment à plage périmée reste manuel. Les mots exacts ne sont pas proposés pour eux-mêmes. Aucun texte ni temps n’est modifié pendant la préparation.
+- `src-tauri/src/history.rs`, `desktop.rs`, `src/reviewClient.ts` : nouvelle commande `prepare_vocabulary_review` à l’ouverture d’un éditeur avec profil. Le calcul se fait sur une copie dans un worker, puis la révision et l’état terminé sont revérifiés avant persistance atomique. L’ancien historique accepte `Source.vocabulary` absent comme faux. Les suggestions utilisent les commandes existantes `resolve_review` / `restore_review` et leurs statuts ; « vocabulary » est une origine, pas un nouveau moteur.
+- `src/App.tsx`, `src/Review.tsx`, `src/review.ts` : chargement du document préparé, origine « Suggestion de vocabulaire », avertissement de proximité orthographique et mêmes décisions Garder/Accepter/Modifier, raccourcis, persistance et annulation. Les anciens boutons directs de vocabulaire sont masqués pendant la Relecture, restent disponibles en édition.
+
+| Commande | Résultat |
+|---|---|
+| `npm run build` | TypeScript et Vite réussis |
+| `npm test` | 38 tests réussis, 12 fichiers ; nouveau test du collage/doublons |
+| `ELPO_CHROMIUM_EXECUTABLE=/usr/bin/chromium npm run test:browser` | 46 tests réussis, IPC simulé ; 4 nouveaux scénarios |
+| `cargo test -p elpo-core --locked` | 37 tests réussis ; 2 nouveaux tests des suggestions et plages |
+| `cargo test -p elpotranscribe --locked` | 13 tests portables réussis ; nouveau test de préparation, échec disque, réouverture et décision conservée |
+| `cargo clippy -p elpo-core --locked -- -D warnings` | Réussi |
+| `cargo clippy -p elpotranscribe --tests --locked -- -D warnings` | Réussi, parties portables seulement |
+| `cargo fmt --all --check` et `git diff --check` | Réussis |
+
+Les tests navigateur couvrent création et reprise des étiquettes, collage et déduplication, filtre à plus de vingt termes et retrait jusqu’à vingt, duplication par le menu, suppression refusée puis acceptée, réinitialisation, demandes JSON avec le bon identifiant, noms de profils en colonne, langue automatique, ajout depuis l’éditeur. Le nouveau scénario Relecture garde d’abord le mot d’origine, annule, accepte explicitement puis recharge la décision, avec les mêmes temps. Les tests Rust couvrent l’élision française, emoji et plages UTF-16, absence de correction à la préparation, acceptation et annulation avec bornes inchangées, non-répétition des décisions, priorité à une divergence existante et absence de réancrage approximatif. Le test portable du store exige qu’un échec de persistance laisse tout le document visible inchangé.
+
+Captures hors Git dans `.ui-captures/phase-10/` : deux avant et cinq après à 1280 × 800, deux scénarios de capture après réussis. La capture d’éditeur avant provient des sources frontend du commit `0154d72` servies temporairement pour comparaison ; le checkout de travail n’a pas été remplacé. Liste, étiquettes et proposition de vocabulaire inspectées visuellement. Les fixtures ne prouvent ni inférence, ni menu AppKit, ni lecture audio native, ni performance sur une transcription longue.
+
+À vérifier sur macOS ARM64 : compilation Swift/Tauri et tests natifs avec les commandes documentées ci-dessous ; menu « … » réel et dialogues Importer/Exporter .json, collage depuis le presse-papiers macOS et VoiceOver. Avec un vrai audio et un profil, tester la génération des suggestions à l’ouverture, Garder/Accepter/Modifier, annulation/rétablissement, fermeture/réouverture et maintien des temps. Mesurer aussi le temps de préparation sur vos fichiers de 30 minutes ; il n’a pas été mesuré sur M2 8 Go physique. Aucun build natif de cette branche ni nouveau DMG publié ici. Prochaine phase : **11 — Identité et finitions**.
+
 ## Refonte de l’interface — Phase 9 (16 octobre 2026)
 
 Fenêtre Réglages dédiée, sans changement d’inférence, d’horodatages ou de formats d’export, ni nouvelle dépendance d’exécution.

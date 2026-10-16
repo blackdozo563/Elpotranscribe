@@ -1193,6 +1193,56 @@ fn save_edit(
     edit_transaction(&state, &id, |job| job.save(cues, expected_revision))
 }
 #[tauri::command]
+async fn prepare_vocabulary_review(
+    state: State<'_, AppState>,
+    id: String,
+    profile_id: String,
+) -> Result<ReviewDocument, String> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let profile = state
+            .data
+            .profiles
+            .lock()
+            .map_err(err)?
+            .profiles
+            .iter()
+            .find(|p| p.id == profile_id)
+            .cloned();
+        let mut candidate = state
+            .data
+            .store
+            .lock()
+            .map_err(err)?
+            .jobs
+            .iter()
+            .find(|job| job.id == id)
+            .cloned()
+            .ok_or("Transcription inconnue")?;
+        let expected = candidate.edit_revision;
+        let profile = profile
+            .or_else(|| {
+                candidate
+                    .profile_snapshot
+                    .as_ref()
+                    .filter(|p| p.id == profile_id)
+                    .cloned()
+            })
+            .ok_or("Profil inconnu")?;
+        let document = candidate.prepare_vocabulary(&profile)?;
+        edit_transaction(&state, &id, |job| {
+            if job.status != "completed" || job.edit_revision != expected {
+                return Err("La transcription a changé. Rechargez-la avant de continuer.".into());
+            }
+            job.review_state = candidate.review_state;
+            job.edit_revision = candidate.edit_revision;
+            Ok(document)
+        })
+    })
+    .await
+    .map_err(err)?
+}
+#[tauri::command]
 fn list_review(state: State<'_, AppState>, id: String) -> Result<ReviewDocument, String> {
     let store = state.data.store.lock().map_err(err)?;
     Ok(store
@@ -1449,6 +1499,7 @@ pub fn run() {
             archive_completed,
             save_edit,
             list_review,
+            prepare_vocabulary_review,
             resolve_review,
             restore_review,
             review_pending_total,

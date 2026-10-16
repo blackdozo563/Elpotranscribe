@@ -2,18 +2,10 @@ import { number } from "./format";
 import { Button, Select, TextField, TextArea } from "./components/ui";
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import type { VocabularyProfile } from "./domain";
-export const cleanTerms = (text: string) => {
-  const seen = new Set<string>();
-  return text
-    .split(/\r?\n/)
-    .map((s) => s.trim())
-    .filter(
-      (s) =>
-        s &&
-        !seen.has(s.toLocaleLowerCase()) &&
-        !!seen.add(s.toLocaleLowerCase()),
-    );
-};
+export { cleanTerms } from "./vocabularyTerms";
+import { cleanTerms, appendTerms } from "./vocabularyTerms";
+import { showNativeMenu } from "./components/ui/showNativeMenu";
+import { Plus, Minus, MoreHorizontal, X } from "lucide-react";
 export const profilePrompt = (p: VocabularyProfile) =>
   [p.whisper_prompt.trim(), cleanTerms(p.terms.join("\n")).join(", ")]
     .filter(Boolean)
@@ -49,6 +41,8 @@ export default function Vocabulary({
     initialProfile?.terms.join("\n") ?? "",
   );
   const [quick, setQuick] = useState("");
+  const [filter, setFilter] = useState("");
+  const [duplicates, setDuplicates] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const terms = cleanTerms(termsText);
@@ -61,6 +55,8 @@ export default function Vocabulary({
     setOriginal(profile);
     setTermsText(profile?.terms.join("\n") ?? "");
     setQuick("");
+    setFilter("");
+    setDuplicates([]);
     setError("");
   };
   useEffect(() => {
@@ -101,13 +97,80 @@ export default function Vocabulary({
       if ((await guard.current?.()) !== false) load(profile);
     });
   };
-  const add = () => {
-    const value = quick.trim();
-    if (value) {
-      setTermsText(cleanTerms(termsText + "\n" + value).join("\n"));
-      setQuick("");
-    }
+  const add = (value = quick) => {
+    const result = appendTerms(terms, value);
+    setTermsText(result.terms.join("\n"));
+    setDuplicates(result.duplicates);
+    setQuick("");
   };
+  const removeProfile = () =>
+    void attempt(async () => {
+      if (!draft?.id || draft.builtin) return;
+      if (
+        (await action("confirm_action", {
+          message: `Supprimer le profil « ${draft.name} » ?`,
+        })) !== true
+      )
+        return;
+      await action("delete_profile", { id: draft.id });
+      load(profiles.find((p) => p.id !== draft.id) ?? null);
+    });
+  const options = () =>
+    void showNativeMenu([
+      {
+        id: "duplicate",
+        text: "Dupliquer",
+        enabled: !!edited && !saving,
+        action: () => {
+          if (edited)
+            choose({
+              ...edited,
+              id: "",
+              name: `${edited.name} — copie`,
+              builtin: false,
+            });
+        },
+      },
+      {
+        id: "reset",
+        text: "Réinitialiser",
+        enabled: !!draft?.builtin && !saving,
+        action: () =>
+          void attempt(async () => {
+            if (
+              (await action("confirm_action", {
+                message:
+                  "Réinitialiser ce profil avec les termes et la phrase de contexte fournis ?",
+              })) === true
+            )
+              load(
+                (await action("reset_profile", {
+                  id: draft!.id,
+                })) as VocabularyProfile,
+              );
+          }),
+      },
+      {
+        id: "import",
+        text: "Importer .json",
+        enabled: !saving,
+        action: () =>
+          void attempt(async () => {
+            if ((await guard.current?.()) === false) return;
+            const profile = await action("import_profile");
+            if (profile) load(profile as VocabularyProfile);
+          }),
+      },
+      {
+        id: "export",
+        text: "Exporter .json",
+        enabled: !!draft?.id && !dirty && !saving,
+        action: () =>
+          void attempt(async () => {
+            await action("export_profile", { id: draft!.id });
+          }),
+      },
+    ]).catch((error) => setError(String(error)));
   const promptBytes = edited
     ? new TextEncoder().encode(profilePrompt(edited)).length
     : 0;
@@ -163,27 +226,30 @@ export default function Vocabulary({
         </div>
       )}
       <div className="vocabulary-layout">
-        <aside
-          className="panel profile-list"
-          aria-label="Profils de vocabulaire"
-        >
-          {profiles.map((p) => (
+        <aside className="profile-list" aria-label="Profils de vocabulaire">
+          <div className="profile-items">
+            {profiles.map((p) => (
+              <Button
+                key={p.id}
+                disabled={saving}
+                aria-pressed={draft?.id === p.id}
+                className={
+                  draft?.id === p.id ? "profile-item active" : "profile-item"
+                }
+                onClick={() => choose(p)}
+              >
+                <strong>{p.name}</strong>
+                <span>
+                  {p.language.toUpperCase()} · {number(p.terms.length)} termes
+                  {p.builtin ? " · Fourni" : ""}
+                </span>
+              </Button>
+            ))}
+          </div>
+          <div className="profile-list-actions">
             <Button
-              key={p.id}
-              className={
-                draft?.id === p.id ? "profile-item active" : "profile-item"
-              }
-              onClick={() => choose(p)}
-            >
-              <strong>{p.name}</strong>
-              <span>
-                {p.language.toUpperCase()} · {number(p.terms.length)} termes
-                {p.builtin ? " · Fourni" : ""}
-              </span>
-            </Button>
-          ))}
-          <div className="button-row">
-            <Button
+              aria-label="Nouveau profil"
+              title="Nouveau profil"
               disabled={saving}
               onClick={() =>
                 choose({
@@ -196,93 +262,32 @@ export default function Vocabulary({
                 })
               }
             >
-              Nouveau profil
+              <Plus size={15} />
             </Button>
             <Button
-              disabled={!edited || saving}
-              onClick={() =>
-                edited &&
-                choose({
-                  ...edited,
-                  id: "",
-                  name: `${edited.name} — copie`,
-                  builtin: false,
-                })
-              }
-            >
-              Dupliquer
-            </Button>
-            <Button
+              aria-label="Supprimer le profil"
+              title="Supprimer le profil"
               disabled={!draft?.id || draft.builtin || saving}
-              onClick={() =>
-                void attempt(async () => {
-                  if (
-                    (await action("confirm_action", {
-                      message: `Supprimer le profil « ${draft!.name} » ?`,
-                    })) !== true
-                  )
-                    return;
-                  await action("delete_profile", { id: draft!.id });
-                  load(profiles.find((p) => p.id !== draft!.id) ?? null);
-                })
-              }
+              onClick={removeProfile}
             >
-              Supprimer
+              <Minus size={15} />
             </Button>
-            {draft?.builtin && (
-              <Button
-                disabled={saving}
-                onClick={() =>
-                  void attempt(async () => {
-                    if (
-                      (await action("confirm_action", {
-                        message:
-                          "Réinitialiser ce profil avec les termes et l’invite fournis ?",
-                      })) === true
-                    )
-                      load(
-                        (await action("reset_profile", {
-                          id: draft.id,
-                        })) as VocabularyProfile,
-                      );
-                  })
-                }
-              >
-                Réinitialiser
-              </Button>
-            )}
             <Button
+              aria-label="Options du profil"
+              title="Options du profil"
               disabled={saving}
-              onClick={() =>
-                void attempt(async () => {
-                  if ((await guard.current?.()) === false) return;
-                  const p = await action("import_profile");
-                  if (p) load(p as VocabularyProfile);
-                })
-              }
+              onClick={options}
             >
-              Importer .json
-            </Button>
-            <Button
-              disabled={!draft?.id || dirty || saving}
-              onClick={() =>
-                void attempt(async () => {
-                  await action("export_profile", { id: draft!.id });
-                })
-              }
-            >
-              Exporter .json
+              <MoreHorizontal size={16} />
             </Button>
           </div>
         </aside>
         {draft && (
-          <section
-            className="panel profile-detail"
-            aria-label="Éditer le profil"
-          >
+          <section className="profile-detail" aria-label="Éditer le profil">
             <label>
               Nom du profil
               <TextField
+                disabled={saving}
                 aria-label="Nom du profil"
                 value={draft.name}
                 onChange={(e) => setDraft({ ...draft, name: e.target.value })}
@@ -291,6 +296,7 @@ export default function Vocabulary({
             <label>
               Langue du profil
               <Select
+                disabled={saving}
                 aria-label="Langue du profil"
                 value={draft.language}
                 onChange={(e) =>
@@ -304,49 +310,108 @@ export default function Vocabulary({
                 <option value="en">Anglais</option>
               </Select>
             </label>
-            <label>
-              Termes du profil
-              <TextArea
-                rows={10}
-                aria-label="Termes du profil"
-                value={termsText}
-                onChange={(e) => setTermsText(e.target.value)}
-                spellCheck={false}
-              />
-            </label>
-            <small role="status">
-              {number(terms.length)} termes · Une entrée par ligne ; doublons et
-              lignes vides ignorés.
-            </small>
-            <div className="button-row">
+            <section className="profile-terms" aria-label="Termes du profil">
+              <div className="profile-terms-heading">
+                <h2>Termes du profil</h2>
+                <span>{number(terms.length)} termes</span>
+              </div>
+              {terms.length > 20 && (
+                <TextField
+                  type="search"
+                  aria-label="Filtrer les termes"
+                  placeholder="Filtrer les termes…"
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                />
+              )}
+              <ul
+                className="term-tags"
+                aria-label="Termes enregistrés dans le profil"
+              >
+                {terms
+                  .filter(
+                    (term) =>
+                      terms.length <= 20 ||
+                      term
+                        .toLocaleLowerCase()
+                        .includes(filter.toLocaleLowerCase()),
+                  )
+                  .map((term) => (
+                    <li key={term}>
+                      <span>{term}</span>
+                      <Button
+                        variant="quiet"
+                        aria-label={`Retirer ${term}`}
+                        disabled={saving}
+                        onClick={() => {
+                          setTermsText(
+                            terms.filter((t) => t !== term).join("\n"),
+                          );
+                          setDuplicates([]);
+                        }}
+                      >
+                        <X size={12} />
+                      </Button>
+                    </li>
+                  ))}
+              </ul>
+              {terms.length === 0 && (
+                <p className="profile-help">Aucun terme.</p>
+              )}
+              {filter &&
+                terms.length > 20 &&
+                !terms.some(
+                  (term) =>
+                    terms.length <= 20 ||
+                    term
+                      .toLocaleLowerCase()
+                      .includes(filter.toLocaleLowerCase()),
+                ) && <p className="profile-help">Aucun terme ne correspond.</p>}
               <TextField
                 aria-label="Ajouter un terme"
+                placeholder="Ajouter un terme…"
                 value={quick}
+                disabled={saving}
                 onChange={(e) => setQuick(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") {
+                  if (e.key === "Enter" && !e.nativeEvent.isComposing) {
                     e.preventDefault();
                     add();
                   }
                 }}
+                onPaste={(e) => {
+                  const text = e.clipboardData.getData("text");
+                  if (/[\r\n]/u.test(text)) {
+                    e.preventDefault();
+                    add(text);
+                  }
+                }}
               />
-              <Button onClick={add}>+ Ajouter</Button>
-            </div>
+              <p className="profile-help">
+                Entrée pour ajouter. Vous pouvez coller plusieurs lignes.
+              </p>
+              <p className="profile-duplicates" role="status">
+                {duplicates.length
+                  ? `Déjà présent${duplicates.length > 1 ? "s" : ""} : ${duplicates.join(", ")}`
+                  : ""}
+              </p>
+            </section>
             <label>
-              Invite Whisper
+              Phrase de contexte
               <TextArea
                 rows={4}
-                aria-label="Invite Whisper"
+                disabled={saving}
+                aria-label="Phrase de contexte"
                 value={draft.whisper_prompt}
                 onChange={(e) =>
                   setDraft({ ...draft, whisper_prompt: e.target.value })
                 }
               />
             </label>
-            <p>
-              Cette invite et les termes sont transmis à Whisper avant
-              transcription pour orienter l’orthographe. Ultra utilise les
-              termes uniquement pour la relecture.
+            <p className="profile-help">
+              Cette phrase et les termes sont transmis à Whisper large-v3-turbo
+              avant transcription pour orienter l’orthographe. Parakeet Ultra
+              utilise les termes uniquement pour la relecture.
             </p>
             <small role="status">
               {counted?.text === promptText
