@@ -5,11 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "tsc --noEmit && vite build",
+    "build": "npm run check && vite build",
     "test": "vitest run",
     "tauri": "tauri",
     "native:build": "bash scripts/build-native.sh",
-    "check": "tsc --noEmit",
+    "check": "node --test scripts/check-import-paths.test.mjs && node scripts/check-import-paths.mjs && tsc --noEmit",
     "test:browser": "playwright test"
   },
   "dependencies": {

@@ -1,13 +1,13 @@
-import Chapters from "./Chapters";
+import Chapters from "./YouTubeChapters";
 import logo from "../assets/logo.svg";
 import {
   connectSettings,
   mergeSettings,
   mergeSnapshot,
 } from "./settingsClient";
-import { SecondOpinionSheet, ReviewInbox } from "./SecondOpinion";
+import { SecondOpinionSheet, ReviewInbox } from "./SecondOpinionViews";
 import { pendingInJob } from "./secondOpinion";
-import { ReviewText, ReviewPopover, ReviewGutter } from "./Review";
+import { ReviewText, ReviewPopover, ReviewGutter } from "./ReviewComponents";
 import {
   adjacentReview,
   nextPendingReview,
@@ -20,7 +20,7 @@ import {
   prepareVocabularyReview,
 } from "./reviewClient";
 import type { ReviewDecision } from "./review";
-import Library from "./Library";
+import Library from "./LibraryView";
 import Models from "./Models";
 import { number } from "./format";
 import { Button, Popover, Select, TextField, TextArea } from "./components/ui";
