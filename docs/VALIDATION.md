@@ -1,5 +1,33 @@
 # Validation réellement effectuée
 
+
+## Refonte de l’interface — Phase 9 (16 octobre 2026)
+
+Fenêtre Réglages dédiée, sans changement d’inférence, d’horodatages ou de formats d’export, ni nouvelle dépendance d’exécution.
+
+- `src-tauri/src/menus.rs`, `src-tauri/capabilities/settings.json`, `src/main.tsx` : création/réutilisation d’une fenêtre Tauri `settings`, 740 × 620, non redimensionnable. Réglages… / ⌘, ne quitte plus l’éditeur. Le contexte des menus suit le focus ; Fermer vise les réglages lorsqu’ils sont actifs. Aucune permission shell, HTTP ou fichiers générique ajoutée.
+- `src/SettingsWindow.tsx`, `src/style.css` : trois onglets accessibles au clavier, NumberStepper compacts, préréglages Standard / YouTube (42, 2, 5 s), Vertical (24, 1, 3 s), Personnalisé ; confirmation discrète après écriture, erreur visible et retour aux dernières valeurs enregistrées en cas d’échec. Les changements et la fermeture attendent l’écriture courante. La vérification des versions de modèles est dans Modèles et réseau ; les téléchargements restent explicites. Application affiche la version du bundle, `sysctl hw.model` et « Aucune télémétrie » ; une lecture impossible ne remplace pas l’information par une valeur supposée.
+- `src-tauri/src/preferences.rs`, `history.rs`, `desktop.rs`, `src/settingsClient.ts`, `src/domain.ts` : patches de champs appliqués à l’état courant, validation et persistance avant publication, révision croissante rétrocompatible, événement Tauri `settings-changed`. Les réglages des deux fenêtres et les changements de profil publient la même révision. Les événements et snapshots anciens ne peuvent pas écraser des réglages plus récents. L’ancien historique sans révision commence à zéro.
+- `src/App.tsx`, `Models.tsx`, `Library.tsx` : retrait de Paramètres dans la barre latérale et du bouton Enregistrer les préférences ; les commandes existantes de moteur, langue, profil et export automatique utilisent désormais les patches pour préserver les champs modifiés dans l’autre fenêtre.
+- `src/settingsPreview.ts` : texte du premier segment non vide de la dernière transcription terminée, mis en lignes ; affichage des bornes réelles et CPS sur toute cette durée. Plusieurs groupes ou une durée cible dépassée déclenchent un avertissement. Aucun nouveau cue, temps distribué ou exemple fictif ; aperçu absent sans transcription. Un mot long reste entier, une durée nulle/inversée ne produit pas de vitesse fictive.
+
+| Commande | Résultat |
+|---|---|
+| `npm run build` | TypeScript et Vite réussis |
+| `npm test` | 37 tests réussis, 12 fichiers ; 7 nouveaux tests de preview, révisions et protocole |
+| `ELPO_CHROMIUM_EXECUTABLE=/usr/bin/chromium npm run test:browser` | 42 tests réussis, IPC simulé ; 3 nouveaux scénarios de réglages |
+| `cargo test -p elpo-core --locked` | 35 tests réussis |
+| `cargo test -p elpotranscribe --locked` | 12 tests portables réussis ; 3 nouveaux tests de patches, validation/échec disque et sélection de profil |
+| `cargo clippy -p elpo-core --locked -- -D warnings` | Réussi |
+| `cargo clippy -p elpotranscribe --tests --locked -- -D warnings` | Réussi, parties portables seulement |
+| `cargo fmt --all --check` et `git diff --check` | Réussis |
+
+Les scénarios navigateur ouvrent deux pages avec un store IPC partagé et diffusent explicitement l’événement : changement des mises à jour reflété dans Mode local, export automatique synchronisé dans les deux sens, valeurs de sous-titres préservées, éditeur non enregistré conservé pendant l’ouverture. Ils vérifient les onglets au clavier, le stepper, la confirmation après réussite seulement, le retour aux valeurs persistées après erreur, l’absence d’aperçu vide, la réutilisation de la fenêtre et l’attente d’une écriture retardée avant fermeture. Les tests Rust vérifient la fusion de patches indépendants, le rechargement de la révision, l’ancien historique et l’absence de changement visible après validation refusée ou échec de persistance.
+
+Captures : deux états avant et six après dans `.ui-captures/phase-09/`, hors Git. Bibliothèque à 1280 × 800 et réglages à 740 × 620 ; deux scénarios de capture après réussis. Aperçus Standard/Vertical et Application inspectés visuellement. Ces captures et les deux pages de navigateur ne prouvent pas la création, le focus, les accélérateurs ou la fermeture d’une fenêtre native Tauri.
+
+À vérifier sur macOS ARM64 : compilation Swift/Tauri et tests natifs selon les commandes ci-dessous ; ouverture réelle via Réglages… et ⌘,, taille fixe, réutilisation, focus et fermeture de la seule fenêtre active, menus désactivés dans les réglages et rétablis dans l’éditeur, VoiceOver, persistance après relance, version et identifiant matériel réels. Essayer aussi un changement depuis chaque fenêtre pendant l’ouverture de l’autre, et l’aperçu d’une vraie transcription. Aucun build natif de cette branche ni essai physique M2 8 Go effectué ici. Aucun nouveau DMG publié. Prochaine phase : **10 — Vocabulaire**.
+
 ## Refonte de l’interface — Phase 8 (15 octobre 2026)
 
 Second avis intégré au parcours, sans changement d’inférence, d’horodatages ou de formats d’export, ni ajout de dépendance.

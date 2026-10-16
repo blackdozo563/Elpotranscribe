@@ -228,6 +228,13 @@ async function localReviewFixture(page: import("@playwright/test").Page) {
             };
           if (command === "plugin:menu|new")
             return [99, "fixture-context-menu"];
+          if (command === "update_settings") {
+            Object.assign(
+              state.settings,
+              (args as unknown as { patch: object }).patch,
+            );
+            return { settings: structuredClone(state.settings), revision: 1 };
+          }
           if (command === "save_settings" && args.settings)
             state.settings = args.settings;
           if (command === "confirm_action")
@@ -524,9 +531,18 @@ test("menus : réglages, import existant et repli de la barre latérale", async 
     .click();
   await expect(page.locator("aside.sidebar")).toBeVisible();
   await menuAction(page, "settings");
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (
+          window as unknown as { __TEST_CALLS__: { command: string }[] }
+        ).__TEST_CALLS__.some((c) => c.command === "open_settings"),
+      ),
+    )
+    .toBe(true);
   await expect(
-    page.getByRole("heading", { name: "Paramètres", exact: true }),
-  ).toBeVisible();
+    page.getByRole("button", { name: "Paramètres", exact: true }),
+  ).toHaveCount(0);
   await menuAction(page, "import-folder");
   await expect
     .poll(() =>
@@ -659,7 +675,7 @@ test("menu Quitter : un traitement exige une confirmation explicite", async ({
     .toEqual({ quit: true });
 });
 
-test("contrôles compacts : sélecteur natif, stepper et sauvegarde des valeurs", async ({
+test("contrôles compacts : sélecteur natif de transcription", async ({
   page,
 }) => {
   await localReviewFixture(page);
@@ -671,44 +687,6 @@ test("contrôles compacts : sélecteur natif, stepper et sauvegarde des valeurs"
   expect(
     await selector.evaluate((element) => getComputedStyle(element).appearance),
   ).toBe("none");
-  await page.getByRole("button", { name: "Paramètres", exact: true }).click();
-  const characters = page.getByRole("spinbutton", {
-    name: "Caractères par ligne",
-    exact: true,
-  });
-  await expect(characters).toHaveValue("42");
-  await page
-    .getByRole("button", {
-      name: "Augmenter Caractères par ligne",
-      exact: true,
-    })
-    .click();
-  await expect(characters).toHaveValue("43");
-  await page
-    .getByRole("button", {
-      name: "Diminuer Durée cible maximum (secondes)",
-      exact: true,
-    })
-    .click();
-  await page
-    .getByRole("button", { name: "Enregistrer les préférences", exact: true })
-    .click();
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          (
-            window as unknown as {
-              __TEST_CALLS__: Array<{
-                command: string;
-                args: { settings?: { subtitles: unknown } };
-              }>;
-            }
-          ).__TEST_CALLS__.find((call) => call.command === "save_settings")
-            ?.args.settings?.subtitles,
-      ),
-    )
-    .toEqual({ lineLength: 43, maxLines: 2, maxDurationMs: 4000 });
 });
 
 test("échelle à 1280 × 800 : boutons sur une ligne et barre d’outils de 52 px", async ({
@@ -720,7 +698,6 @@ test("échelle à 1280 × 800 : boutons sur une ligne et barre d’outils de 52 
     "Bibliothèque",
     "À relire",
     "Modèles IA",
-    "Paramètres",
     "Vocabulaire",
   ]) {
     await page
@@ -761,7 +738,7 @@ test("échelle à 1280 × 800 : boutons sur une ligne et barre d’outils de 52 
     ).toBe(52);
     expect(
       await page
-        .getByRole("button", { name: "Paramètres", exact: true })
+        .getByRole("button", { name: "Vocabulaire", exact: true })
         .evaluate((element) => element.getBoundingClientRect().height),
     ).toBe(28);
   }
@@ -775,7 +752,6 @@ test("nettoyage global : aucun texte interne, un titre et une mention de confide
     "Bibliothèque",
     "À relire",
     "Modèles IA",
-    "Paramètres",
     "Vocabulaire",
   ]) {
     await page

@@ -63,6 +63,10 @@ async function fixture(page: Page) {
             profile?: (typeof defaults)[number];
             id?: string;
             settings?: typeof state.settings;
+            patch?: Partial<typeof state.settings> & {
+              profileId?: string;
+              clearProfile?: boolean;
+            };
             term?: string;
             jobId?: string;
           },
@@ -73,6 +77,20 @@ async function fixture(page: Page) {
               (window as unknown as { __TEST_CONFIRM__?: boolean })
                 .__TEST_CONFIRM__ !== false
             );
+          if (command === "update_settings") {
+            const { profileId, clearProfile, ...fields } = args.patch!;
+            Object.assign(state.settings, fields);
+            if (profileId)
+              Object.assign(state.settings, {
+                selectedProfileId: profileId,
+                language: state.profiles.find(
+                  (p: { id: string }) => p.id === profileId,
+                ).language,
+              });
+            if (clearProfile)
+              Object.assign(state.settings, { selectedProfileId: null });
+            return { settings: structuredClone(state.settings), revision: 1 };
+          }
           if (command === "save_settings") {
             state.settings = args.settings!;
             return;
@@ -181,7 +199,7 @@ test("profils fournis : suppression interdite, édition et réinitialisation ; g
     .getByLabel("Termes du profil", { exact: true })
     .fill("Terme changé");
   await page.evaluate(() => Object.assign(window, { __TEST_CONFIRM__: false }));
-  await page.getByRole("button", { name: "Paramètres", exact: true }).click();
+  await page.getByRole("button", { name: "Modèles IA", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Vocabulaire", exact: true }),
   ).toBeVisible();

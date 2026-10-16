@@ -1,3 +1,8 @@
+import {
+  connectSettings,
+  mergeSettings,
+  mergeSnapshot,
+} from "./settingsClient";
 import { SecondOpinionSheet, ReviewInbox } from "./SecondOpinion";
 import { pendingInJob } from "./secondOpinion";
 import { ReviewText, ReviewPopover, ReviewGutter } from "./Review";
@@ -11,14 +16,7 @@ import type { ReviewDecision } from "./review";
 import Library from "./Library";
 import Models from "./Models";
 import { number } from "./format";
-import {
-  Button,
-  Popover,
-  Select,
-  TextField,
-  TextArea,
-  NumberStepper,
-} from "./components/ui";
+import { Button, Popover, Select, TextField, TextArea } from "./components/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke, convertFileSrc, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
@@ -63,7 +61,6 @@ import {
   type VocabularyProfile,
   type EditState,
   type Job,
-  type Settings,
   type Snapshot,
   time,
   parseTime,
@@ -141,7 +138,35 @@ export default function App() {
   };
   const desktop = isTauri() || "__TAURI_INTERNALS__" in window;
   const refresh = useCallback(async () => {
-    if (desktop) setData(await invoke<Snapshot>("snapshot"));
+    if (desktop) {
+      const next = await invoke<Snapshot>("snapshot");
+      setData((previous) => mergeSnapshot(previous, next));
+    }
+  }, [desktop]);
+  useEffect(() => {
+    if (!desktop) return;
+    let disposed = false,
+      unlisten: (() => void) | undefined;
+    void connectSettings((document) => {
+      if (!disposed) setData((previous) => mergeSettings(previous, document));
+    })
+      .then((fn) => {
+        if (disposed) fn();
+        else unlisten = fn;
+      })
+      .catch((e) => setError(String(e)));
+    const key = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === ",") {
+        event.preventDefault();
+        void invoke("open_settings").catch((e) => setError(String(e)));
+      }
+    };
+    window.addEventListener("keydown", key);
+    return () => {
+      disposed = true;
+      unlisten?.();
+      window.removeEventListener("keydown", key);
+    };
   }, [desktop]);
   const requestOpinion = (job?: Job) => {
     void (async () => {
@@ -281,7 +306,7 @@ export default function App() {
         closing.current = false;
       }
     } else if (command === "sidebar") setSidebarHidden((value) => !value);
-    else if (command === "settings") await navigate(5);
+    else if (command === "settings") await action("open_settings");
     else if (["new", "import-audio", "import-folder"].includes(command)) {
       if (data.busy || working || batch.length >= 10) return;
       if (await navigate(0))
@@ -396,7 +421,7 @@ export default function App() {
           </div>
         </div>
         <nav>
-          {[0, 3, 6, 4, 5].map((i) => {
+          {[0, 3, 6, 4].map((i) => {
             const label = navigation[i];
             const Icon = icons[i];
             return (
@@ -551,9 +576,8 @@ export default function App() {
                           value={data.settings.engine}
                           disabled={data.busy || working}
                           onChange={(e) =>
-                            run("save_settings", {
-                              settings: {
-                                ...data.settings,
+                            run("update_settings", {
+                              patch: {
                                 engine: e.target.value,
                                 language:
                                   e.target.value === "ultra" &&
@@ -577,11 +601,10 @@ export default function App() {
                           value={data.settings.language}
                           disabled={data.busy}
                           onChange={(e) =>
-                            run("save_settings", {
-                              settings: {
-                                ...data.settings,
+                            run("update_settings", {
+                              patch: {
                                 language: e.target.value,
-                                selectedProfileId: null,
+                                clearProfile: true,
                               },
                             })
                           }
@@ -614,13 +637,10 @@ export default function App() {
                             const profile = data.profiles?.find(
                               (p) => p.id === e.target.value,
                             );
-                            run("save_settings", {
-                              settings: {
-                                ...data.settings,
-                                selectedProfileId: profile?.id ?? null,
-                                language:
-                                  profile?.language ?? data.settings.language,
-                              },
+                            run("update_settings", {
+                              patch: profile
+                                ? { profileId: profile.id }
+                                : { clearProfile: true },
                             });
                           }}
                         >
@@ -671,133 +691,11 @@ export default function App() {
                   guard={profileGuard}
                 />
               )}
-              {page === 5 && (
-                <>
-                  <Preferences
-                    settings={data.settings}
-                    save={async (settings) => {
-                      await action("save_settings", { settings });
-                      setNotice("Préférences enregistrées sur ce Mac.");
-                    }}
-                  />
-                  <section className="panel info-panel">
-                    <h3>Application</h3>
-                    <p>ELPOTRANSCRIBE 1.2.0 · {data.platform}</p>
-                  </section>
-                </>
-              )}
             </>
           )}
         </div>
       </main>
     </div>
-  );
-}
-function Preferences({
-  settings,
-  save,
-}: {
-  settings: Settings;
-  save: (s: Settings) => Promise<void>;
-}) {
-  const [s, setS] = useState(settings);
-  return (
-    <section className="panel preferences">
-      <h2>Sous-titres</h2>
-      <label className="check-label">
-        <TextField
-          type="checkbox"
-          checked={s.autoModelUpdates}
-          onChange={(event) =>
-            setS({ ...s, autoModelUpdates: event.target.checked })
-          }
-        />
-        Rechercher automatiquement les mises à jour des modèles (aucun audio
-        envoyé)
-      </label>
-      <div className="form-grid">
-        <label>
-          Préréglage
-          <Select
-            onChange={(e) => {
-              const short = e.target.value === "short";
-              setS({
-                ...s,
-                subtitles: {
-                  lineLength: short ? 24 : 42,
-                  maxLines: 2,
-                  maxDurationMs: short ? 3000 : 5000,
-                },
-              });
-            }}
-          >
-            <option value="standard">Standard / YouTube</option>
-            <option value="short">TikTok / Reels / Sous-titres courts</option>
-          </Select>
-        </label>
-        <label>
-          Caractères par ligne
-          <NumberStepper
-            aria-label="Caractères par ligne"
-            min={12}
-            max={80}
-            value={s.subtitles.lineLength}
-            onValueChange={(value) =>
-              setS({
-                ...s,
-                subtitles: { ...s.subtitles, lineLength: value },
-              })
-            }
-          />
-        </label>
-        <label>
-          Nombre de lignes
-          <Select
-            value={s.subtitles.maxLines}
-            onChange={(e) =>
-              setS({
-                ...s,
-                subtitles: { ...s.subtitles, maxLines: +e.target.value },
-              })
-            }
-          >
-            <option value="1">1</option>
-            <option value="2">2</option>
-          </Select>
-        </label>
-        <label>
-          Durée cible maximum (secondes)
-          <NumberStepper
-            aria-label="Durée cible maximum (secondes)"
-            min={1}
-            max={10}
-            value={s.subtitles.maxDurationMs / 1000}
-            onValueChange={(value) =>
-              setS({
-                ...s,
-                subtitles: {
-                  ...s.subtitles,
-                  maxDurationMs: value * 1000,
-                },
-              })
-            }
-          />
-        </label>
-      </div>
-      <p>
-        Les frontières utilisent les horodatages reconnus. Un mot long peut
-        demander un réglage plus large.
-      </p>
-      <Button
-        className="primary"
-        onClick={() => {
-          void save(s).catch(() => {});
-        }}
-      >
-        <Save size={16} />
-        Enregistrer les préférences
-      </Button>
-    </section>
   );
 }
 function Editor({

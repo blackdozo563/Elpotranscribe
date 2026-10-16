@@ -87,6 +87,8 @@ impl Default for Settings {
 pub(crate) struct Store {
     pub(crate) jobs: Vec<Job>,
     pub(crate) settings: Settings,
+    #[serde(default, rename = "settingsRevision")]
+    pub(crate) settings_revision: u64,
 }
 pub(crate) fn default_engine() -> String {
     "ultra".into()

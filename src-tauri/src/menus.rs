@@ -1,6 +1,9 @@
 //! Native presentation only. Custom actions are dispatched to the existing renderer handlers.
 use serde::Deserialize;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Mutex,
+};
 use tauri::{
     menu::{AboutMetadata, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder},
     AppHandle, Emitter, Manager, State,
@@ -9,10 +12,12 @@ use tauri::{
 #[derive(Default)]
 pub struct MenuSession {
     pub ready: AtomicBool,
+    settings_opening: AtomicBool,
     pub allow_exit: AtomicBool,
+    context: Mutex<MenuContext>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MenuContext {
     editor: bool,
@@ -138,6 +143,21 @@ pub fn menu_ready(session: State<'_, MenuSession>) {
 
 #[tauri::command]
 pub fn sync_menu_context(app: AppHandle, context: MenuContext) -> Result<(), String> {
+    *app.state::<MenuSession>()
+        .context
+        .lock()
+        .map_err(|e| e.to_string())? = context;
+    refresh_context(&app)
+}
+pub fn refresh_context(app: &AppHandle) -> Result<(), String> {
+    let Some(session) = app.try_state::<MenuSession>() else {
+        return Ok(());
+    };
+    let context = if settings_focused(app) {
+        MenuContext::default()
+    } else {
+        session.context.lock().map_err(|e| e.to_string())?.clone()
+    };
     let Some(menu) = app.menu() else {
         return Ok(());
     };
@@ -173,6 +193,9 @@ pub fn finish_window_action(app: AppHandle, quit: bool) -> Result<(), String> {
             .store(true, Ordering::SeqCst);
         app.exit(0);
     } else if let Some(window) = app.get_webview_window("main") {
+        if let Some(settings) = app.get_webview_window("settings") {
+            settings.destroy().map_err(|e| e.to_string())?;
+        }
         let session = app.state::<MenuSession>();
         session.allow_exit.store(true, Ordering::SeqCst);
         if let Err(error) = window.destroy() {
@@ -183,6 +206,58 @@ pub fn finish_window_action(app: AppHandle, quit: bool) -> Result<(), String> {
     Ok(())
 }
 
+fn settings_focused(app: &AppHandle) -> bool {
+    app.get_webview_window("settings")
+        .is_some_and(|window| window.is_focused().unwrap_or(false))
+}
+#[tauri::command]
+pub fn open_settings(app: AppHandle) -> Result<(), String> {
+    let session = app.state::<MenuSession>();
+    if session.settings_opening.swap(true, Ordering::SeqCst) {
+        return Ok(());
+    }
+    let result = (|| {
+        if let Some(window) = app.get_webview_window("settings") {
+            window.show().map_err(|e| e.to_string())?;
+            window.unminimize().map_err(|e| e.to_string())?;
+            window.set_focus().map_err(|e| e.to_string())?;
+        } else {
+            tauri::WebviewWindowBuilder::new(
+                &app,
+                "settings",
+                tauri::WebviewUrl::App("index.html?window=settings".into()),
+            )
+            .title("Réglages")
+            .inner_size(740.0, 620.0)
+            .resizable(false)
+            .maximizable(false)
+            .build()
+            .map_err(|e| e.to_string())?;
+        }
+        refresh_context(&app)
+    })();
+    session.settings_opening.store(false, Ordering::SeqCst);
+    result
+}
 pub fn dispatch(app: &AppHandle, action: &str) {
+    if action == "settings" {
+        let _ = open_settings(app.clone());
+        return;
+    }
+    if settings_focused(app) && action != "quit" {
+        if action == "close" {
+            if let Some(window) = app.get_webview_window("settings") {
+                let _ = window.close();
+            }
+        }
+        return;
+    }
+    if app.get_webview_window("main").is_none() && action == "quit" {
+        app.state::<MenuSession>()
+            .allow_exit
+            .store(true, Ordering::SeqCst);
+        app.exit(0);
+        return;
+    }
     let _ = app.emit_to("main", "app-menu", action);
 }

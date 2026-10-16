@@ -1,3 +1,4 @@
+use crate::preferences::{SettingsDocument, SettingsPatch};
 use elpo_core::{self as core, Cue, SubtitleSettings};
 use serde::Serialize;
 use std::{
@@ -8,7 +9,7 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use tauri::{Manager, State};
+use tauri::{Emitter, Manager, State};
 
 use crate::history::{
     self, default_engine, Job, ReviewDocument, Settings, Store, Verification, VerificationProgress,
@@ -25,6 +26,7 @@ struct Snapshot {
     model_updates: Vec<serde_json::Value>,
     platform: String,
     profiles: Vec<core::vocabulary::Profile>,
+    settings_revision: u64,
     review_pending_total: usize,
 }
 #[derive(Default)]
@@ -91,15 +93,29 @@ impl AppState {
         s.jobs.retain(|j| j.id != id);
         self.persist(&s)
     }
-    fn sync_profile_selection(&self, id: &str, language: Option<&str>) -> Result<(), String> {
+    fn sync_profile_selection(
+        &self,
+        app: &tauri::AppHandle,
+        id: &str,
+        language: Option<&str>,
+    ) -> Result<(), String> {
         let mut store = self.data.store.lock().map_err(err)?;
         if store.settings.selected_profile_id.as_deref() == Some(id) {
+            let mut candidate = store.clone();
             if let Some(language) = language {
-                store.settings.language = language.into();
+                candidate.settings.language = language.into();
             } else {
-                store.settings.selected_profile_id = None;
+                candidate.settings.selected_profile_id = None;
             }
-            self.persist(&store)?;
+            candidate.settings_revision = candidate
+                .settings_revision
+                .checked_add(1)
+                .ok_or("Révision maximale atteinte")?;
+            self.persist(&candidate)?;
+            *store = candidate;
+            let document = store.settings_document();
+            drop(store);
+            let _ = app.emit("settings-changed", document);
         }
         Ok(())
     }
@@ -236,6 +252,7 @@ impl AppState {
             review_pending_total: s.pending_total(),
             profiles: self.data.profiles.lock().map_err(err)?.profiles.clone(),
             settings: s.settings.clone(),
+            settings_revision: s.settings_revision,
             busy,
             model_installed: self.installed(&s.settings.engine),
             installed_models: ["ultra", "whisper-turbo"]
@@ -924,6 +941,7 @@ fn archive_completed(state: State<'_, AppState>) -> Result<(), String> {
 }
 #[tauri::command]
 fn save_profile(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     mut profile: core::vocabulary::Profile,
 ) -> Result<core::vocabulary::Profile, String> {
@@ -937,11 +955,15 @@ fn save_profile(
         .map_err(err)?;
     *profiles = next;
     drop(profiles);
-    state.sync_profile_selection(&saved.id, Some(&saved.language))?;
+    state.sync_profile_selection(&app, &saved.id, Some(&saved.language))?;
     Ok(saved)
 }
 #[tauri::command]
-fn delete_profile(state: State<'_, AppState>, id: String) -> Result<(), String> {
+fn delete_profile(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<(), String> {
     let mut profiles = state.data.profiles.lock().map_err(err)?;
     let mut next = profiles.clone();
     next.remove(&id).map_err(err)?;
@@ -949,11 +971,12 @@ fn delete_profile(state: State<'_, AppState>, id: String) -> Result<(), String> 
         .map_err(err)?;
     *profiles = next;
     drop(profiles);
-    state.sync_profile_selection(&id, None)?;
+    state.sync_profile_selection(&app, &id, None)?;
     Ok(())
 }
 #[tauri::command]
 fn reset_profile(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     id: String,
 ) -> Result<core::vocabulary::Profile, String> {
@@ -964,7 +987,7 @@ fn reset_profile(
         .map_err(err)?;
     *profiles = next;
     drop(profiles);
-    state.sync_profile_selection(&saved.id, Some(&saved.language))?;
+    state.sync_profile_selection(&app, &saved.id, Some(&saved.language))?;
     Ok(saved)
 }
 #[tauri::command]
@@ -1076,7 +1099,11 @@ async fn prompt_info(
     }).await.map_err(err)?
 }
 #[tauri::command]
-fn save_settings(state: State<'_, AppState>, mut settings: Settings) -> Result<(), String> {
+fn save_settings(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    mut settings: Settings,
+) -> Result<(), String> {
     let runtime = state.data.runtime.lock().map_err(err)?;
     if runtime.busy {
         return Err("Attendez la fin de l’opération pour changer les réglages".into());
@@ -1101,8 +1128,51 @@ fn save_settings(state: State<'_, AppState>, mut settings: Settings) -> Result<(
         settings.language = profile.language.clone();
     }
     let mut s = state.data.store.lock().map_err(err)?;
-    s.settings = settings;
-    state.persist(&s)
+    let mut candidate = s.clone();
+    candidate.settings = settings;
+    candidate.settings_revision = candidate
+        .settings_revision
+        .checked_add(1)
+        .ok_or("Révision maximale atteinte")?;
+    state.persist(&candidate)?;
+    *s = candidate;
+    let document = s.settings_document();
+    drop(s);
+    let _ = app.emit("settings-changed", document);
+    Ok(())
+}
+#[tauri::command]
+fn update_settings(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    patch: SettingsPatch,
+) -> Result<SettingsDocument, String> {
+    let runtime = state.data.runtime.lock().map_err(err)?;
+    if runtime.busy {
+        return Err("Attendez la fin de l’opération pour changer les réglages".into());
+    }
+    let profiles = state.data.profiles.lock().map_err(err)?.profiles.clone();
+    let document =
+        state
+            .data
+            .store
+            .lock()
+            .map_err(err)?
+            .patch_settings(patch, &profiles, |candidate| state.persist(candidate))?;
+    let _ = app.emit("settings-changed", &document);
+    Ok(document)
+}
+#[tauri::command]
+fn application_info(app: tauri::AppHandle, state: State<'_, AppState>) -> serde_json::Value {
+    let model = Command::new("/usr/sbin/sysctl")
+        .args(["-n", "hw.model"])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty());
+    serde_json::json!({"version":app.package_info().version.to_string(),"macModel":model,"platform":state.data.platform})
 }
 // Persist the complete candidate before exposing it to any snapshot or caller.
 fn edit_transaction(
@@ -1332,6 +1402,9 @@ pub fn run() {
         })
         .on_menu_event(|app, event| crate::menus::dispatch(app, event.id().as_ref()))
         .on_window_event(|window, event| {
+            if matches!(event, tauri::WindowEvent::Focused(_)) {
+                let _ = crate::menus::refresh_context(window.app_handle());
+            }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "main"
                     && window
@@ -1363,6 +1436,9 @@ pub fn run() {
             retry_job,
             remove_job,
             save_settings,
+            update_settings,
+            application_info,
+            crate::menus::open_settings,
             save_profile,
             delete_profile,
             reset_profile,
@@ -1461,6 +1537,7 @@ mod integration_tests {
                 store: Mutex::new(Store {
                     jobs: vec![source.clone()],
                     settings: settings.clone(),
+                    settings_revision: 0,
                 }),
                 runtime: Mutex::new(Runtime::default()),
                 profiles: Mutex::new(core::vocabulary::defaults()),
@@ -1561,6 +1638,7 @@ mod integration_tests {
                         auto_save: true,
                         ..Settings::default()
                     },
+                    settings_revision: 0,
                 }),
                 runtime: Mutex::new(Runtime::default()),
                 profiles: Mutex::new(core::vocabulary::defaults()),
@@ -1644,6 +1722,7 @@ mod integration_tests {
                 store: Mutex::new(Store {
                     jobs: vec![make(invalid), make(a.clone()), make(b.clone())],
                     settings,
+                    settings_revision: 0,
                 }),
                 runtime: Mutex::new(Runtime::default()),
                 profiles: Mutex::new(core::vocabulary::defaults()),

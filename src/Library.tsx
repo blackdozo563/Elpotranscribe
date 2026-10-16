@@ -371,9 +371,10 @@ export default function Library({
             <TextField
               type="checkbox"
               checked={data.settings.autoSave}
+              disabled={disabled}
               onChange={(e) =>
-                run("save_settings", {
-                  settings: { ...data.settings, autoSave: e.target.checked },
+                run("update_settings", {
+                  patch: { autoSave: e.target.checked },
                 })
               }
             />

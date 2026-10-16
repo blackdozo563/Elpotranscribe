@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "settings",
+  "description": "Fenêtre de réglages locale : événements et fermeture, sans shell ni accès réseau ou fichiers générique.",
+  "windows": ["settings"],
+  "permissions": ["core:default", "core:window:allow-destroy"]
+}

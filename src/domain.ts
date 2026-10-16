@@ -74,6 +74,7 @@ export interface ModelUpdate {
   error: string | null;
 }
 export interface Snapshot {
+  settingsRevision?: number;
   reviewPendingTotal?: number;
   profiles?: VocabularyProfile[];
   jobs: Job[];

@@ -181,9 +181,8 @@ export default function Models({
                     variant="primary"
                     disabled={disabled}
                     onClick={() =>
-                      run("save_settings", {
-                        settings: {
-                          ...data.settings,
+                      run("update_settings", {
+                        patch: {
                           engine: model.id,
                           language:
                             model.id === "ultra" &&

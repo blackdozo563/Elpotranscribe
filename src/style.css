@@ -2113,3 +2113,100 @@ input[type="checkbox"] {
 .editor-review-actions {
   margin-top: 8px;
 }
+
+/* Native utility window: a single compact surface, independent of the editor. */
+.settings-window {
+  height: 100vh;
+  max-width: 740px;
+  margin: 0 auto;
+  padding: 24px 32px;
+  overflow: auto;
+}
+.settings-window h1 {
+  font-size: 22px;
+  font-weight: 600;
+  margin: 0 0 20px;
+}
+.settings-tabs {
+  display: flex;
+  gap: 4px;
+}
+.settings-tabs button[aria-selected="true"] {
+  background: var(--color-action-doux);
+  color: var(--color-action);
+}
+.settings-feedback {
+  min-height: 32px;
+  padding: 8px 0;
+  font-size: 12px;
+  color: var(--color-texte-secondaire);
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  min-height: 40px;
+}
+.settings-row .ui-select {
+  width: 240px;
+  flex-shrink: 0;
+}
+.settings-window [role="tabpanel"] {
+  padding-top: 8px;
+}
+.settings-window .check-label {
+  justify-content: flex-start;
+  font-size: 13px;
+}
+.settings-help {
+  font-size: 12px;
+  color: var(--color-texte-secondaire);
+}
+.settings-preview {
+  margin-top: 24px;
+}
+.settings-preview h2 {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0;
+}
+.settings-preview p {
+  font-size: 12px;
+  color: var(--color-texte-secondaire);
+  margin: 8px 0;
+}
+.settings-preview-groups {
+  background: var(--color-panneau);
+  border-radius: 8px;
+  padding: 16px;
+  max-height: 148px;
+  overflow: auto;
+  display: grid;
+  gap: 12px;
+}
+.settings-preview-groups > div {
+  font-family: var(--font-lecture);
+  white-space: pre-wrap;
+  text-align: center;
+  user-select: text;
+  overflow-wrap: anywhere;
+}
+.settings-preview p.settings-preview-warning {
+  color: var(--color-attention);
+}
+.settings-error {
+  color: var(--color-erreur);
+}
+.settings-application {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 12px;
+  margin: 0 0 24px;
+}
+.settings-application dt {
+  color: var(--color-texte-secondaire);
+}
+.settings-application dd {
+  margin: 0;
+}

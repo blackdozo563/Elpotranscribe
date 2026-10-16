@@ -7,6 +7,8 @@ mod history;
 mod menus;
 #[cfg(any(target_os = "macos", test))]
 mod model_disk;
+#[cfg(any(target_os = "macos", test))]
+mod preferences;
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().is_some_and(|arg| arg == "--bench-local") {
