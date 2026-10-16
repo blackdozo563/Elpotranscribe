@@ -24,7 +24,11 @@ func installWhisper(root: URL, engine: String) async throws {
     let filename = "ggml-" + model.name + ".bin"
     guard let digest = source.files[filename], digest.hasPrefix("sha256:") else { throw Failure(message: "Empreinte SHA-256 du modèle absente du catalogue") }
     let url = URL(string: "https://huggingface.co/ggerganov/whisper.cpp/resolve/\(source.revision)/\(filename)")!
-    let (temporary, response) = try await URLSession.shared.download(from: url)
+    let progress = InstallProgress(engine: engine)
+    let session = URLSession(configuration: .default, delegate: progress, delegateQueue: nil)
+    defer { session.finishTasksAndInvalidate() }
+    let (temporary, response) = try await session.download(from: url)
+    progress.validate()
     defer { try? FileManager.default.removeItem(at: temporary) }
     guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw Failure(message: "Téléchargement Whisper refusé") }
     guard "sha256:" + (try hashFile(temporary)) == digest else { throw Failure(message: "Empreinte du téléchargement Whisper incorrecte") }

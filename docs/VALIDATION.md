@@ -2,6 +2,37 @@
 
 
 
+
+## Refonte de l’interface — Phase 11 (16 octobre 2026)
+
+Identité et finitions terminées côté portable. Aucun changement du calcul d’inférence, des limites de sous-titres ni des formats d’export. Aucune nouvelle dépendance d’exécution.
+
+- `assets/logo.svg`, `assets/logo.png`, `src-tauri/icons/*`, `src/App.tsx`, `src/vite-env.d.ts` : SVG vérifié identique au contenu demandé, rendu transparent 1024 × 1024 avec Chromium, icônes macOS générées par `npm run tauri -- icon assets/logo.png`. Source historique retirée, logo unique dans l’interface, icône décorative AudioLines remplacée. Génération d’icônes réussie ; apparence réelle du Dock non vérifiée.
+- `src/style.css` : thème clair par tokens et `prefers-color-scheme`, indicateur latéral unique glissant en 250 ms, entrée des lignes par `@starting-style`, dépôt en 200 ms et coche SVG en 250 ms après retour d’un chemin d’export. Mouvement réduit désactive ces effets. Une annulation d’export ne déclenche pas la coche.
+- `src/chapters.ts`, `Chapters.tsx`, `App.tsx`, `src-tauri/src/desktop.rs` : feuille de chapitres, pauses d’au moins trois secondes entre les cues existants, titres provisoires des huit premiers mots modifiables, copie par stdin vers `pbcopy`. Premier à 00:00, suivants au début du segment après pause arrondi à la seconde inférieure pour YouTube ; trois chapitres minimum et dix secondes minimum chacun, dernier compris. Les contraintes sont revérifiées avant copie. Aucune proposition si données insuffisantes ou chronologie invalide, aucun temps ajouté dans les cues. Les raccourcis de l’éditeur sont suspendus dans cette feuille.
+- `native/swift/Sources/ElpoASR/InstallProgress.swift`, `Whisper.swift`, `ElpoASR.swift`, `ModelUpdates.swift`, `src-tauri/src/download_progress.rs`, `desktop.rs`, `main.rs`, `src/Models.tsx`, `domain.ts`, `downloadProgress.ts` : progression éphémère d’installation. Octets URLSession pour Whisper ; tailles réelles des fichiers `.partial` observées pour Ultra. Totaux facultatifs issus du catalogue existant. Le helper écrit un document atomique temporaire, Rust le valide et l’expose au snapshot, puis l’efface à la fin. Anneau du **fichier en cours**, pas du modèle entier. Aucune conversion de la fraction pondérée du SDK, aucun pourcentage pour un total inconnu, aucun pourcentage de compilation inventé.
+
+| Commande | Résultat |
+|---|---|
+| `npm run build` | TypeScript et Vite réussis |
+| `npm test` | 41 tests réussis, 13 fichiers ; 3 nouveaux tests de chapitres et octets |
+| `ELPO_CHROMIUM_EXECUTABLE=/usr/bin/chromium npm run test:browser` | 53 tests réussis, IPC simulé ; 7 nouveaux scénarios |
+| `cargo test -p elpo-core --locked` | 37 tests réussis |
+| `cargo test -p elpotranscribe --locked` | 14 tests portables réussis ; nouveau test des données d’octets |
+| `cargo clippy -p elpo-core --locked -- -D warnings` | Réussi |
+| `cargo clippy -p elpotranscribe --tests --locked -- -D warnings` | Réussi, parties portables seulement |
+| `cargo fmt --all --check` et `git diff --check` | Réussis |
+| `npm run tauri -- icon assets/logo.png` | Réussi ; PNG 1024 × 1024 RGBA et ICNS reconnus par `file` |
+| `swift test --package-path native/swift` | Non exécuté, macOS requis ; 2 nouveaux tests Swift ajoutés |
+
+Les tests de chapitres vérifient les pauses et bornes réelles, l’arrondi, les trois chapitres, les dix secondes, la durée manquante ou trop courte, le segment unique et les chevauchements ; les cues restent identiques. Les scénarios navigateur modifient les titres, vérifient le texte exact envoyé à la commande de copie et les cues après fermeture, affichent une erreur de presse-papiers sans fausse réussite, refusent les repères insuffisants, basculent l’apparence des deux fenêtres et contrôlent l’absence de transition avec mouvement réduit. Ils vérifient aussi le logo unique, l’anneau à 25 octets/100 et sans total connu, et la coche uniquement après un export confirmé par l’IPC. Le test Rust rejette le mauvais moteur, un total nul, des octets supérieurs au total et un document incomplet ; il accepte le total inconnu.
+
+`InstallProgressTests.swift`, non exécuté ici, vérifie un fichier partiel de 25 octets pour un total de 100, le total inconnu, la phase de validation et le maintien de l’identité d’un modèle sans tailles enregistrées. Le code du SDK FluidAudio à la révision épinglée `224de0fb3c304b41bbae24e85e1801900865ff3e` a été inspecté : `FileDownloader` utilise `<destination>.partial`, et `DownloadProgress` expose seulement une fraction/phase. Cette lecture ne prouve ni compilation Swift ni livraison de callbacks sur Mac.
+
+Captures hors Git : quatre avant et dix après dans `.ui-captures/phase-11/`. Bibliothèque, modèles, éditeur, chapitres et vocabulaire à 1280 × 800 ; réglages à 740 × 620. Quatre scénarios de capture après réussis. Logo, bibliothèque claire, modèles avec anneau, chapitres et réglages clairs inspectés visuellement. Ces images ne valident pas l’effet de verre natif, le presse-papiers système ni un téléchargement réel.
+
+Voir le [compte rendu des onze phases](UI-REFACTOR-REPORT.md) pour les fichiers, choix et tests de chaque phase et la liste des vérifications Mac : verre/boutons de fenêtre, menus/raccourcis, relecture complète au clavier, double vérification réelle, Dock et thème clair. Il faut aussi compiler et tester la nouvelle instrumentation Swift, réinstaller les deux modèles avec un vrai réseau, essayer la copie dans YouTube et mesurer les performances sur M2 8 Go. **Aucun build natif de cette branche ni nouveau DMG publié ici.** Les onze phases sont implémentées ; l’étape suivante est la validation native macOS avant packaging.
+
 ## Refonte de l’interface — Phase 10 (16 octobre 2026)
 
 Profils de vocabulaire compacts et suggestions intégrées à la relecture, sans changer l’inférence, les temps, les formats d’export ou le JSON des profils. Aucune dépendance ajoutée.

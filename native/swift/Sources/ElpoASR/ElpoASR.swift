@@ -65,7 +65,16 @@ let ultraSDKFolderName = Repo.parakeetUltra.folderName
                 // pinned vocabulary before downloading the missing model bundles.
                 try Data(sources[0].revision.utf8).write(to: directory.appendingPathComponent(".fluidaudio-revision"))
                 ModelHub.offlineMode = false
+                let progress = InstallProgress(engine: "ultra")
+                let observation = Task {
+                    while !Task.isCancelled {
+                        progress.observePartialFiles(directory: directory, source: sources[0])
+                        do { try await Task.sleep(for: .milliseconds(250)) } catch { break }
+                    }
+                }
+                defer { observation.cancel() }
                 let models = try await AsrModels.downloadAndLoad(to: directory, version: .ultra)
+                progress.validate()
                 let manager = AsrManager(); try await manager.loadModels(models); await manager.cleanup()
                 let manifest = Manifest(sdk: sdkRevision, files: try modelHashes(directory), sources: sources)
                 try activateModel(prepared: directory, root: root, engine: "ultra", manifest: manifest)

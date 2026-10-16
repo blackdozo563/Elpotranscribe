@@ -1,3 +1,4 @@
+import { downloadFraction } from "./downloadProgress";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import { MoreHorizontal, RotateCcw } from "lucide-react";
@@ -207,6 +208,45 @@ export default function Models({
                 )}
               </div>
             </div>
+            {data.downloadProgress?.engine === model.id && (
+              <div
+                className="download-meter"
+                role="progressbar"
+                aria-label={`Téléchargement ${model.name}`}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={
+                  downloadFraction(data.downloadProgress) !== null
+                    ? Math.floor(downloadFraction(data.downloadProgress)! * 100)
+                    : undefined
+                }
+              >
+                <svg viewBox="0 0 36 36" aria-hidden="true">
+                  <circle className="download-track" cx="18" cy="18" r="14" />
+                  <circle
+                    className="download-value"
+                    cx="18"
+                    cy="18"
+                    r="14"
+                    pathLength="1"
+                    strokeDasharray={`${downloadFraction(data.downloadProgress) ?? 0} 1`}
+                  />
+                </svg>
+                <span>
+                  {data.downloadProgress.phase === "validating" ? (
+                    "Validation du modèle…"
+                  ) : (
+                    <>
+                      {bytes(data.downloadProgress.receivedBytes)}
+                      {data.downloadProgress.totalBytes !== null
+                        ? ` sur ${bytes(data.downloadProgress.totalBytes)}`
+                        : " reçus · taille totale inconnue"}{" "}
+                      · {data.downloadProgress.fileName}
+                    </>
+                  )}
+                </span>
+              </div>
+            )}
             <p>{model.languages}</p>
             <p
               className={

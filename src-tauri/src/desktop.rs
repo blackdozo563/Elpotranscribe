@@ -28,6 +28,7 @@ struct Snapshot {
     profiles: Vec<core::vocabulary::Profile>,
     settings_revision: u64,
     review_pending_total: usize,
+    download_progress: Option<crate::download_progress::DownloadProgress>,
 }
 #[derive(Default)]
 struct Runtime {
@@ -36,6 +37,7 @@ struct Runtime {
     child: Option<Child>,
     temporary: Option<tempfile::TempDir>,
     shutting_down: bool,
+    download_progress: Option<crate::download_progress::DownloadProgress>,
 }
 struct Inner {
     store: Mutex<Store>,
@@ -163,6 +165,12 @@ impl AppState {
     ) -> Result<serde_json::Value, String> {
         let out = tempfile::NamedTempFile::new().map_err(err)?;
         let stderr = tempfile::NamedTempFile::new().map_err(err)?;
+        let install_engine = request
+            .get("action")
+            .and_then(|v| v.as_str())
+            .filter(|a| *a == "install")
+            .and_then(|_| request.get("engine").and_then(|v| v.as_str()));
+        let mut progress_path = None;
         {
             let mut r = self.data.runtime.lock().map_err(err)?;
             if r.shutting_down {
@@ -187,9 +195,15 @@ impl AppState {
                 .prefix("elpotranscribe-")
                 .tempdir()
                 .map_err(err)?;
+            let progress_file = temporary.path().join("install-progress.json");
+            if install_engine.is_some() {
+                progress_path = Some(progress_file.clone());
+                r.download_progress = None;
+            }
             let helper = self.data.helper.clone();
             let mut child = Command::new(helper)
                 .env("TMPDIR", temporary.path())
+                .env("ELPO_INSTALL_PROGRESS", &progress_file)
                 .stdin(Stdio::piped())
                 .stdout(Stdio::from(out.reopen().map_err(err)?))
                 .stderr(Stdio::from(stderr.reopen().map_err(err)?))
@@ -221,6 +235,11 @@ impl AppState {
             if let Some(s) = status {
                 break s;
             }
+            if let (Some(path), Some(engine)) = (&progress_path, install_engine) {
+                if let Some(progress) = crate::download_progress::read(path, engine) {
+                    self.data.runtime.lock().map_err(err)?.download_progress = Some(progress);
+                }
+            }
             std::thread::sleep(Duration::from_millis(100));
         };
         {
@@ -245,7 +264,10 @@ impl AppState {
         Ok(value)
     }
     fn snapshot(&self) -> Result<Snapshot, String> {
-        let busy = self.data.runtime.lock().map_err(err)?.busy;
+        let (busy, download_progress) = {
+            let runtime = self.data.runtime.lock().map_err(err)?;
+            (runtime.busy, runtime.download_progress.clone())
+        };
         let s = self.data.store.lock().map_err(err)?;
         Ok(Snapshot {
             jobs: s.jobs.clone(),
@@ -254,6 +276,7 @@ impl AppState {
             settings: s.settings.clone(),
             settings_revision: s.settings_revision,
             busy,
+            download_progress,
             model_installed: self.installed(&s.settings.engine),
             installed_models: ["ultra", "whisper-turbo"]
                 .into_iter()
@@ -327,6 +350,7 @@ impl AppState {
     fn release(&self) {
         if let Ok(mut r) = self.data.runtime.lock() {
             r.busy = false;
+            r.download_progress = None;
             r.active = None;
         }
     }
@@ -1335,6 +1359,38 @@ async fn export_zip(state: State<'_, AppState>) -> Result<Option<PathBuf>, Strin
     .map_err(err)?
 }
 #[tauri::command]
+async fn copy_chapters(text: String) -> Result<(), String> {
+    if text.is_empty() || text.len() > 128 * 1024 || text.contains('\0') {
+        return Err("Chapitres invalides.".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut child = Command::new("/usr/bin/pbcopy")
+            .stdin(Stdio::piped())
+            .spawn()
+            .map_err(err)?;
+        if let Err(error) = child
+            .stdin
+            .take()
+            .ok_or("Presse-papiers indisponible")
+            .and_then(|mut input| {
+                input
+                    .write_all(text.as_bytes())
+                    .map_err(|_| "Presse-papiers indisponible")
+            })
+        {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(error.to_string());
+        }
+        if !child.wait().map_err(err)?.success() {
+            return Err("Copie impossible.".into());
+        }
+        Ok(())
+    })
+    .await
+    .map_err(err)?
+}
+#[tauri::command]
 fn reveal(state: State<'_, AppState>, id: String) -> Result<(), String> {
     let s = state.data.store.lock().map_err(err)?;
     let path = s
@@ -1505,6 +1561,7 @@ pub fn run() {
             review_pending_total,
             export_job,
             export_zip,
+            copy_chapters,
             reveal,
             relink
         ])

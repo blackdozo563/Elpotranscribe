@@ -2,6 +2,8 @@ mod benchmark;
 #[cfg(target_os = "macos")]
 mod desktop;
 #[cfg(any(target_os = "macos", test))]
+mod download_progress;
+#[cfg(any(target_os = "macos", test))]
 mod history;
 #[cfg(target_os = "macos")]
 mod menus;

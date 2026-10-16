@@ -74,6 +74,7 @@ export interface ModelUpdate {
   error: string | null;
 }
 export interface Snapshot {
+  downloadProgress?: import("./downloadProgress").DownloadProgress | null;
   settingsRevision?: number;
   reviewPendingTotal?: number;
   profiles?: VocabularyProfile[];

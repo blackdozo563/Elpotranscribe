@@ -5,6 +5,7 @@ struct ModelSource: Codable, Equatable, Sendable {
     let repository: String
     let revision: String
     let files: [String: String]
+    var fileSizes: [String: UInt64]? = nil
 }
 struct ModelUpdate: Codable, Sendable {
     let engine: String
@@ -25,6 +26,7 @@ func parseModelSource(_ value: [String: Any], repository: String, engine: String
     guard let revision = value["sha"] as? String, revision.range(of: #"^[a-f0-9]{40,64}$"#, options: .regularExpression) != nil,
           let siblings = value["siblings"] as? [[String: Any]] else { throw Failure(message: "Métadonnées de version absentes") }
     var files: [String: String] = [:]
+    var sizes: [String: UInt64] = [:]
     for item in siblings {
         guard let name = item["rfilename"] as? String else { continue }
         let accepted: Bool
@@ -34,11 +36,13 @@ func parseModelSource(_ value: [String: Any], repository: String, engine: String
         }
         else { accepted = name.contains(".mlmodelc/") || ["json", "safetensors", "bin", "zip", "txt"].contains(URL(fileURLWithPath: name).pathExtension) }
         guard accepted, !name.uppercased().hasPrefix("LICENSE") else { continue }
+        if let size = item["size"] as? NSNumber, size.int64Value > 0 { sizes[name] = size.uint64Value }
+        else if let lfs = item["lfs"] as? [String: Any], let size = lfs["size"] as? NSNumber, size.int64Value > 0 { sizes[name] = size.uint64Value }
         if let lfs = item["lfs"] as? [String: Any], let hash = lfs["sha256"] as? String, hash.count == 64 { files[name] = "sha256:" + hash }
         else if let hash = item["blobId"] as? String, hash.count == 40 { files[name] = "git:" + hash }
     }
     guard !files.isEmpty else { throw Failure(message: "Aucun fichier de modèle versionné dans le catalogue") }
-    return ModelSource(repository: repository, revision: revision, files: files)
+    return ModelSource(repository: repository, revision: revision, files: files, fileSizes: sizes.isEmpty ? nil : sizes)
 }
 func fetchModelSource(repository: String, engine: String) async throws -> ModelSource {
     let url = URL(string: "https://huggingface.co/api/models/" + repository + "?blobs=true")!

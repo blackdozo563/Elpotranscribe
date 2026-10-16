@@ -1,6 +1,6 @@
 # Plan de refonte demandé
 
-Document de référence fourni par l’utilisateur le 15 octobre 2026. État courant : phases 1 à 10 implémentées, contrôles Linux réussis ; validation native Mac non effectuée. Reprendre **la phase 11**, sans sauter les contrôles et commits par phase. Voir [audit](UI-AUDIT.md) et [preuves](VALIDATION.md).
+Document de référence fourni par l’utilisateur le 15 octobre 2026. État courant : phases 1 à 11 implémentées, contrôles Linux réussis ; validation native Mac non effectuée. Les onze phases sont terminées côté portable ; poursuivre par **la validation native macOS** avant un nouveau DMG. Voir [audit](UI-AUDIT.md) et [preuves](VALIDATION.md).
 
 ---
 

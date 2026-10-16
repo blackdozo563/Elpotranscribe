@@ -2337,3 +2337,187 @@ input[type="checkbox"] {
     gap: 20px;
   }
 }
+
+/* Shared theme tokens follow the macOS appearance in both windows. */
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --color-fond: #f6f6f7;
+    --color-panneau: #eeeeef;
+    --color-sureleve: #ffffff;
+    --color-separateur: rgba(0, 0, 0, 0.12);
+    --color-texte: #202126;
+    --color-texte-secondaire: #62656e;
+    --color-action: #6350cb;
+    --color-attention: #885600;
+    --color-succes: #176d41;
+    --color-erreur: #b53125;
+  }
+}
+:root {
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+  }
+}
+.app-logo {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+}
+.sidebar nav {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sidebar .nav {
+  position: relative;
+  z-index: 1;
+}
+.sidebar .nav.active {
+  background: var(--color-transparent);
+}
+.nav-selection {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 28px;
+  border-radius: 6px;
+  background: var(--color-action-doux);
+  transform: translateY(calc(var(--nav-index, 0) * 34px));
+  transition: transform 250ms var(--ease-mac);
+  pointer-events: none;
+}
+.library-table tbody tr {
+  transition:
+    opacity 200ms var(--ease-mac),
+    transform 200ms var(--ease-mac);
+}
+@starting-style {
+  .library-table tbody tr {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+.drop-overlay {
+  background: color-mix(in srgb, var(--color-action) 12%, var(--color-fond));
+  animation: drop-light 200ms var(--ease-mac);
+}
+@keyframes drop-light {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.export-confirmation {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-succes);
+  margin-bottom: 12px;
+  font-size: 12px;
+}
+.export-confirmation svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+}
+.export-confirmation path {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+  animation: export-check 250ms var(--ease-mac);
+}
+@keyframes export-check {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.download-meter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--color-texte-secondaire);
+}
+.download-meter svg {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  fill: none;
+  stroke-width: 3;
+  transform: rotate(-90deg);
+}
+.download-track {
+  stroke: var(--color-separateur);
+}
+.download-value {
+  stroke: var(--color-action);
+  transition: stroke-dasharray 200ms var(--ease-mac);
+}
+.chapters-sheet {
+  margin: auto;
+  width: min(640px, calc(100vw - 48px));
+  max-height: calc(100vh - 64px);
+  overflow: auto;
+  background: var(--color-panneau);
+  color: var(--color-texte);
+  border: 1px solid var(--color-separateur);
+  border-radius: 12px;
+  padding: 24px;
+}
+.chapters-sheet::backdrop {
+  background: color-mix(
+    in srgb,
+    var(--color-fond) 70%,
+    var(--color-transparent)
+  );
+}
+.chapters-sheet h2 {
+  font-size: 22px;
+  margin: 0 0 16px;
+}
+.chapters-sheet p {
+  font-size: 12px;
+  color: var(--color-texte-secondaire);
+}
+.chapters-sheet ol {
+  margin: 12px 0;
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.chapters-sheet li {
+  display: grid;
+  grid-template-columns: 75px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+.chapters-sheet .button-row {
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+  @starting-style {
+    .library-table tbody tr {
+      opacity: 1;
+      transform: none;
+    }
+  }
+}

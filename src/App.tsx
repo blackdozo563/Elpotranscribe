@@ -1,3 +1,5 @@
+import Chapters from "./Chapters";
+import logo from "../assets/logo.svg";
 import {
   connectSettings,
   mergeSettings,
@@ -36,7 +38,6 @@ import {
 } from "./nativeMenu";
 import { nearMisses } from "./profileReview";
 import {
-  AudioLines,
   LibraryBig,
   Plus,
   History,
@@ -114,6 +115,7 @@ export default function App() {
     [data, setData] = useState(initial),
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
+    [exportSuccess, setExportSuccess] = useState(0),
     [working, setWorking] = useState(false),
     [operation, setOperation] = useState<string | null>(null),
     [selected, setSelected] = useState<Job | null>(null);
@@ -240,12 +242,18 @@ export default function App() {
         );
         return;
       }
+      if (["export_job", "export_zip"].includes(command)) setExportSuccess(0);
       setWorking(true);
       setOperation(command);
       setError("");
       setNotice("");
       try {
         const result = await invoke(command, args);
+        if (
+          ["export_job", "export_zip"].includes(command) &&
+          typeof result === "string"
+        )
+          setExportSuccess(Date.now());
         await refresh();
         return result;
       } catch (e) {
@@ -418,14 +426,19 @@ export default function App() {
       )}
       <aside className="sidebar">
         <div className="brand">
-          <span className="brandmark">
-            <AudioLines size={24} />
-          </span>
+          <img className="app-logo" src={logo} alt="" aria-hidden="true" />
           <div>
             ELPO<span>TRANSCRIBE</span>
           </div>
         </div>
-        <nav>
+        <nav
+          style={
+            {
+              "--nav-index": Math.max(0, [0, 3, 6, 4].indexOf(page)),
+            } as React.CSSProperties
+          }
+        >
+          <span className="nav-selection" aria-hidden="true" />
           {[0, 3, 6, 4].map((i) => {
             const label = navigation[i];
             const Icon = icons[i];
@@ -492,6 +505,18 @@ export default function App() {
           </div>
         </header>
         <div className="content">
+          {exportSuccess > 0 && (
+            <div
+              key={exportSuccess}
+              className="export-confirmation"
+              role="status"
+            >
+              <svg viewBox="0 0 20 20" aria-hidden="true">
+                <path d="m4 10 4 4 8-8" pathLength="1" />
+              </svg>
+              Export enregistré
+            </div>
+          )}
           {error && (
             <div role="alert" className="alert">
               <AlertCircle size={18} />
@@ -737,6 +762,7 @@ function Editor({
     [missing, setMissing] = useState(false);
   const audio = useRef<HTMLAudioElement>(null),
     textarea = useRef<Map<number, HTMLTextAreaElement>>(new Map());
+  const [chaptersOpen, setChaptersOpen] = useState(false);
   const [reviewMode, setReviewMode] = useState(startInReview);
   const [activeDifference, setActiveDifference] = useState<string | null>(null);
   const [modifyingReview, setModifyingReview] = useState(false);
@@ -958,6 +984,7 @@ function Editor({
   };
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
+      if (chaptersOpen) return;
       // Text still being entered in the proposal has its own native undo history.
       if (
         modifyingReview &&
@@ -1095,6 +1122,7 @@ function Editor({
   useEffect(() => {
     const handler = (event: Event) => {
       const command = (event as CustomEvent<MenuAction>).detail;
+      if (chaptersOpen) return;
       if (
         (command === "undo" || command === "redo") &&
         modifyingReview &&
@@ -1653,12 +1681,25 @@ function Editor({
           ? `Divergence ${number(differences.findIndex((d) => d.id === activeReview.id) + 1)} sur ${number(differences.length)} · ${isPendingReview(activeReview) ? "à traiter" : "traitée"}`
           : ""}
       </span>
+      {chaptersOpen && (
+        <Chapters
+          cues={state.present}
+          durationMs={job.durationMs}
+          close={() => setChaptersOpen(false)}
+          copy={async (text) => {
+            await invoke("copy_chapters", { text });
+          }}
+        />
+      )}
       <section className="panel export-bar">
         <div>
           <strong>Exporter</strong>
           <p>Chaque export conserve le nom de l’audio original.</p>
         </div>
         <div className="button-row">
+          <Button onClick={() => setChaptersOpen(true)}>
+            Copier les chapitres YouTube
+          </Button>
           <Button
             onClick={() => {
               void exportFile("txt", false);
